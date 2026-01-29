@@ -9,6 +9,7 @@ import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { ErrorDisplay } from '@/components/ErrorDisplay';
 import { EmptyState } from '@/components/EmptyState';
 import { MarketFilter } from '@/components/MarketFilter';
+import { SharePnLCard } from '@/components/SharePnLCard';
 
 const Index = () => {
   const { 
@@ -68,12 +69,21 @@ const Index = () => {
                   </p>
                 </div>
                 
-                {/* Market Filter */}
-                <MarketFilter 
-                  value={marketType}
-                  onChange={setMarketType}
-                  counts={marketCounts}
-                />
+                <div className="flex items-center gap-2">
+                  <MarketFilter 
+                    value={marketType}
+                    onChange={setMarketType}
+                    counts={marketCounts}
+                  />
+                  {displayData && (
+                    <SharePnLCard 
+                      summary={displayData.summary}
+                      dailyPnL={displayData.dailyPnL}
+                      address={address || ''}
+                      marketType={marketType}
+                    />
+                  )}
+                </div>
               </div>
             </div>
 
