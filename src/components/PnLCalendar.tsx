@@ -1,12 +1,14 @@
 import { useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { type DailyPnL, type WeeklyPnL } from '@/lib/hyperliquid';
+import { type DailyPnL, type WeeklyPnL, type Fill } from '@/lib/hyperliquid';
+import { DayTradeBreakdown } from '@/components/DayTradeBreakdown';
 import { cn } from '@/lib/utils';
 
 interface PnLCalendarProps {
   dailyPnL: DailyPnL[];
   weeklyPnL: WeeklyPnL[];
+  fills: Fill[];
 }
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -26,9 +28,10 @@ function formatCurrency(value: number): string {
   return value.toFixed(2);
 }
 
-export function PnLCalendar({ dailyPnL, weeklyPnL }: PnLCalendarProps) {
+export function PnLCalendar({ dailyPnL, weeklyPnL, fills }: PnLCalendarProps) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [hoveredDay, setHoveredDay] = useState<DailyPnL | null>(null);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
   // Create a map for quick lookup
   const pnlMap = useMemo(() => {
@@ -36,12 +39,6 @@ export function PnLCalendar({ dailyPnL, weeklyPnL }: PnLCalendarProps) {
     dailyPnL.forEach(d => map.set(d.date, d));
     return map;
   }, [dailyPnL]);
-
-  const weeklyMap = useMemo(() => {
-    const map = new Map<string, WeeklyPnL>();
-    weeklyPnL.forEach(w => map.set(w.weekStart, w));
-    return map;
-  }, [weeklyPnL]);
 
   // Calculate calendar grid
   const calendarData = useMemo(() => {
@@ -120,6 +117,7 @@ export function PnLCalendar({ dailyPnL, weeklyPnL }: PnLCalendarProps) {
       newDate.setMonth(prev.getMonth() + direction);
       return newDate;
     });
+    setSelectedDate(null); // Close breakdown when changing months
   };
 
   // Calculate week's PnL
@@ -127,6 +125,12 @@ export function PnLCalendar({ dailyPnL, weeklyPnL }: PnLCalendarProps) {
     const week = calendarData[weekIndex];
     if (!week) return 0;
     return week.reduce((sum, day) => sum + (day?.pnl || 0), 0);
+  };
+
+  const handleDayClick = (day: DailyPnL) => {
+    if (day.trades > 0) {
+      setSelectedDate(selectedDate === day.date ? null : day.date);
+    }
   };
 
   return (
@@ -207,18 +211,23 @@ export function PnLCalendar({ dailyPnL, weeklyPnL }: PnLCalendarProps) {
               const hasData = day.trades > 0;
               const isProfitable = day.pnl > 0;
               const isLoss = day.pnl < 0;
+              const isSelected = selectedDate === day.date;
               
               return (
                 <div
                   key={day.date}
+                  onClick={() => handleDayClick(day)}
                   className={cn(
-                    "aspect-square rounded-md p-1.5 flex flex-col justify-between cursor-pointer transition-all duration-200 relative",
+                    "aspect-square rounded-md p-1.5 flex flex-col justify-between transition-all duration-200 relative",
+                    hasData && "cursor-pointer",
                     hasData && isProfitable && "bg-profit-muted hover:bg-profit/30",
                     hasData && isLoss && "bg-loss-muted hover:bg-loss/30",
-                    !hasData && "bg-secondary/50 hover:bg-secondary",
+                    !hasData && "bg-secondary/50",
                     isToday && "ring-2 ring-primary ring-offset-1 ring-offset-background",
-                    hoveredDay?.date === day.date && hasData && isProfitable && "glow-profit",
-                    hoveredDay?.date === day.date && hasData && isLoss && "glow-loss"
+                    isSelected && isProfitable && "ring-2 ring-profit glow-profit",
+                    isSelected && isLoss && "ring-2 ring-loss glow-loss",
+                    hoveredDay?.date === day.date && !isSelected && hasData && isProfitable && "glow-profit",
+                    hoveredDay?.date === day.date && !isSelected && hasData && isLoss && "glow-loss"
                   )}
                   onMouseEnter={() => hasData && setHoveredDay(day)}
                   onMouseLeave={() => setHoveredDay(null)}
@@ -241,9 +250,9 @@ export function PnLCalendar({ dailyPnL, weeklyPnL }: PnLCalendarProps) {
                     </div>
                   )}
                   
-                  {/* Tooltip */}
-                  {hoveredDay?.date === day.date && hasData && (
-                    <div className="absolute z-10 bottom-full left-1/2 -translate-x-1/2 mb-2 bg-popover border border-border rounded-lg p-3 shadow-lg min-w-[160px] animate-fade-in">
+                  {/* Tooltip (only show if not selected) */}
+                  {hoveredDay?.date === day.date && hasData && !isSelected && (
+                    <div className="absolute z-10 bottom-full left-1/2 -translate-x-1/2 mb-2 bg-popover border border-border rounded-lg p-3 shadow-lg min-w-[160px] animate-fade-in pointer-events-none">
                       <div className="text-xs text-muted-foreground mb-2">
                         {new Date(day.date).toLocaleDateString('en-US', { 
                           weekday: 'short', 
@@ -272,6 +281,9 @@ export function PnLCalendar({ dailyPnL, weeklyPnL }: PnLCalendarProps) {
                           <span className="text-muted-foreground">Volume:</span>
                           <span className="ml-1 font-mono">${formatCurrency(day.volume)}</span>
                         </div>
+                      </div>
+                      <div className="mt-2 pt-2 border-t border-border text-[10px] text-primary text-center">
+                        Click to view trades
                       </div>
                       <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-full border-8 border-transparent border-t-popover" />
                     </div>
@@ -314,7 +326,21 @@ export function PnLCalendar({ dailyPnL, weeklyPnL }: PnLCalendarProps) {
           <div className="w-3 h-3 rounded-sm bg-secondary/50" />
           <span className="text-xs text-muted-foreground">No Trades</span>
         </div>
+        {selectedDate && (
+          <span className="text-xs text-primary ml-4">
+            Click day again to close breakdown
+          </span>
+        )}
       </div>
+
+      {/* Trade Breakdown Drawer */}
+      {selectedDate && (
+        <DayTradeBreakdown
+          date={selectedDate}
+          fills={fills}
+          onClose={() => setSelectedDate(null)}
+        />
+      )}
     </div>
   );
 }
