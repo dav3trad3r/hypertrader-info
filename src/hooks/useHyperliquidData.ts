@@ -12,6 +12,7 @@ import {
   type UserTradingData,
   type MarketType,
   type Fill,
+  type FetchAllFillsResult,
 } from '@/lib/hyperliquid';
 import { toast } from '@/hooks/use-toast';
 
@@ -195,7 +196,7 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
     
     try {
       // Fetch ALL historical data for accurate summary
-      const allFills = await fetchAllFills(trimmedAddress, (progressFills, monthsLoaded) => {
+      const result = await fetchAllFills(trimmedAddress, (progressFills, monthsLoaded, limitReached) => {
         // Update fills progressively as they load
         setRawFills(progressFills);
         
@@ -208,19 +209,29 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
         setLoadedMonths(monthsWithData);
       });
       
-      if (allFills.length === 0) {
+      if (result.fills.length === 0) {
         setError('No trading history found for this address');
         setRawFills([]);
       } else {
-        setRawFills(allFills);
+        setRawFills(result.fills);
         
         // Mark all months with data as loaded
         const monthsWithData = new Set<string>();
-        allFills.forEach(fill => {
+        result.fills.forEach(fill => {
           const date = new Date(fill.time);
           monthsWithData.add(getMonthKey(date.getFullYear(), date.getMonth()));
         });
         setLoadedMonths(monthsWithData);
+        
+        // Show warning if limit was reached
+        if (result.limitReached) {
+          toast({
+            title: "Partial history loaded",
+            description: `This account has more than 50,000 trades. Only the most recent 50K trades are shown to ensure app performance. Summary statistics reflect loaded data only.`,
+            duration: 10000,
+            variant: "destructive",
+          });
+        }
       }
     } catch (err) {
       console.error('Error fetching trading data:', err);
