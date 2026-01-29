@@ -160,16 +160,20 @@ export async function fetchAllAvailableFills(address: string): Promise<FetchFill
   const allFills: Fill[] = [];
   const seenTids = new Set<number>();
   
-  // userFillsByTime returns the EARLIEST fills in [startTime, endTime] (capped at 2000).
-  // So to paginate, we move startTime FORWARD using the latest fill time we got.
+  // Strategy: The API returns earliest fills first in a given time range.
+  // When there are many fills at the same millisecond (memecoin partial fills),
+  // we need to handle timestamp collisions carefully.
+  // 
+  // Approach: After each batch, advance startTime to the LATEST time we saw.
+  // On the next request, we'll get duplicates (same timestamp) + new fills.
+  // We dedupe using tid. If we get NO new fills, bump by 1ms.
+  
   const fixedEndTime = Date.now();
   let currentStart = 0;
   let requestCount = 0;
-  // Safety limit: 10k/2k=5 pages, keep some headroom for timestamp-collision edge cases.
-  const maxRequests = 20;
+  const maxRequests = 50; // More headroom for high-volume accounts
   let hitApiLimit = false;
-  let lastCursorStart = currentStart;
-  let lastTotal = 0;
+  let consecutiveNoProgress = 0;
   
   console.log(`Fetching all available fills for ${address}...`);
   
@@ -198,12 +202,17 @@ export async function fetchAllAvailableFills(address: string): Promise<FetchFill
 
       let newCount = 0;
       let maxTime = currentStart;
+      let maxTid = 0;
       
       for (const fill of fills) {
         if (!seenTids.has(fill.tid)) {
           seenTids.add(fill.tid);
           allFills.push(fill);
           newCount++;
+        }
+        
+        if (fill.tid > maxTid) {
+          maxTid = fill.tid;
         }
 
         const t = getFillTime(fill as any);
@@ -222,22 +231,28 @@ export async function fetchAllAvailableFills(address: string): Promise<FetchFill
         break;
       }
 
-      // We hit the 2000 limit - advance startTime forward.
-      // Use maxTime (not maxTime+1) to avoid skipping fills that share the same millisecond.
-      if (maxTime === currentStart) {
-        // If we didn't advance by time, bump by 1ms to avoid an infinite loop.
-        currentStart = currentStart + 1;
+      // Track progress - if no new fills, we're stuck in a timestamp collision
+      if (newCount === 0) {
+        consecutiveNoProgress++;
+        if (consecutiveNoProgress >= 3) {
+          console.warn('No progress after 3 attempts, likely >2000 fills at same ms - advancing time');
+          // Force advance by 1ms to break out of collision
+          currentStart = maxTime + 1;
+          consecutiveNoProgress = 0;
+          continue;
+        }
       } else {
-        currentStart = maxTime;
+        consecutiveNoProgress = 0;
       }
 
-      // Safety: detect lack of progress
-      if (currentStart === lastCursorStart && allFills.length === lastTotal) {
-        console.warn('Pagination made no progress, stopping');
-        break;
+      // Advance startTime to maxTime (not +1) to catch any remaining fills at that timestamp
+      // The deduplication via tid handles overlaps
+      if (maxTime > currentStart) {
+        currentStart = maxTime;
+      } else {
+        // Safety: if maxTime didn't advance, bump by 1ms
+        currentStart = currentStart + 1;
       }
-      lastCursorStart = currentStart;
-      lastTotal = allFills.length;
       
       // Check if we've hit the 10K API limit
       if (allFills.length >= MAX_ACCESSIBLE_FILLS) {
