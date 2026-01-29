@@ -84,6 +84,59 @@ export interface UserTradingData {
 
 const HYPERLIQUID_API = "https://api.hyperliquid.xyz/info";
 
+// Get the proxy URL for edge function
+function getProxyUrl(): string | null {
+  const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+  if (!projectId) return null;
+  return `https://${projectId}.supabase.co/functions/v1/hyperliquid-proxy`;
+}
+
+// Make API request - tries proxy first, falls back to direct
+async function makeApiRequest(payload: object): Promise<Response> {
+  const proxyUrl = getProxyUrl();
+  const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+  
+  // Try proxy first if available
+  if (proxyUrl && anonKey) {
+    try {
+      const response = await fetch(proxyUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": anonKey,
+          "Authorization": `Bearer ${anonKey}`,
+        },
+        body: JSON.stringify(payload),
+      });
+      
+      if (response.ok) {
+        console.log(`Proxy request successful (cache: ${response.headers.get('X-Cache') || 'N/A'})`);
+        return response;
+      }
+      
+      // If rate limited, throw specific error
+      if (response.status === 429) {
+        const error = await response.json();
+        throw new Error(error.error || 'Rate limit exceeded');
+      }
+      
+      // Fall through to direct API for other errors
+      console.warn('Proxy request failed, falling back to direct API');
+    } catch (error) {
+      console.warn('Proxy unavailable, using direct API:', error);
+    }
+  }
+  
+  // Fallback to direct API
+  return fetch(HYPERLIQUID_API, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
 // Fetch all user fills using pagination
 export async function fetchUserFills(address: string): Promise<Fill[]> {
   const allFills: Fill[] = [];
@@ -101,18 +154,12 @@ export async function fetchUserFills(address: string): Promise<Fill[]> {
   
   while (hasMore && currentEnd > startOfHistory) {
     try {
-      const response = await fetch(HYPERLIQUID_API, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          type: "userFillsByTime",
-          user: address,
-          startTime: Math.max(currentStart, startOfHistory),
-          endTime: currentEnd,
-          aggregateByTime: true,
-        }),
+      const response = await makeApiRequest({
+        type: "userFillsByTime",
+        user: address,
+        startTime: Math.max(currentStart, startOfHistory),
+        endTime: currentEnd,
+        aggregateByTime: true,
       });
 
       if (!response.ok) {
@@ -152,15 +199,9 @@ export async function fetchUserFills(address: string): Promise<Fill[]> {
   
   // Also try the simple userFills endpoint for recent trades
   try {
-    const response = await fetch(HYPERLIQUID_API, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        type: "userFills",
-        user: address,
-      }),
+    const response = await makeApiRequest({
+      type: "userFills",
+      user: address,
     });
 
     if (response.ok) {
