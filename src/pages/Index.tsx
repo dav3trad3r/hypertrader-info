@@ -137,7 +137,7 @@ const Index = () => {
       <footer className="border-t border-border mt-12 py-6">
         <div className="container mx-auto px-4 text-center">
           <p className="text-xs text-muted-foreground">
-            Data sourced from Hyperliquid API • Not financial advice
+            <span className="font-medium text-foreground">HyperTrader</span> • Data sourced from Hyperliquid API • Not financial advice
           </p>
         </div>
       </footer>
