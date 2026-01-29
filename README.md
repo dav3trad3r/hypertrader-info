@@ -1,73 +1,86 @@
-# Welcome to your Lovable project
+# HyperTrader
 
-## Project info
+**Track your Hyperliquid trading performance with real-time analytics.**
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+🌐 **Live**: [hypertrader.info](https://hypertrader.info)
 
-## How can I edit this code?
+## Features
 
-There are several ways of editing your application.
+- 📅 **PnL Calendar** — Visual daily profit/loss heatmap with drill-down to individual trades
+- 📊 **Live Positions** — Real-time perpetual and spot positions including HIP-3 assets (xyz: stock perps)
+- 📈 **Performance Summary** — Total PnL, win rate, best/worst days, largest trades
+- 🏆 **Top Assets** — Asset-by-asset breakdown with win rates and average PnL
+- 📆 **Weekly Breakdown** — Week-over-week performance tracking
+- 🔄 **Market Filtering** — Toggle between Perps, Spot, or All markets
+- 📤 **Shareable Cards** — Export your PnL summary as an image
 
-**Use Lovable**
+## Tech Stack
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+- **Frontend**: React, TypeScript, Vite, Tailwind CSS, shadcn/ui
+- **Backend**: Lovable Cloud (Edge Functions)
+- **Data**: Hyperliquid API
+- **Charts**: Recharts
 
-Changes made via Lovable will be committed automatically to this repo.
+## Architecture
 
-**Use your preferred IDE**
+```
+┌─────────────────┐     ┌──────────────────────┐     ┌─────────────────┐
+│   Browser       │────▶│  Edge Function Proxy │────▶│  Hyperliquid    │
+│   (React App)   │◀────│  - Rate limiting     │◀────│  API            │
+│                 │     │  - Request queue     │     │                 │
+│                 │     │  - Response caching  │     │                 │
+└─────────────────┘     └──────────────────────┘     └─────────────────┘
+```
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+### Scalability
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+The app uses an edge function proxy that provides:
 
-Follow these steps:
+- **30-second response caching** — Duplicate requests served from cache
+- **Rate limiting** — 30 requests/minute per address
+- **Request queuing** — 100ms minimum between Hyperliquid API calls
+- **Graceful fallback** — Falls back to direct API if proxy unavailable
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+## Local Development
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+```bash
+# Install dependencies
+npm install
 
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
+# Start dev server
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+## Environment Variables
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+The following are automatically configured via Lovable Cloud:
 
-**Use GitHub Codespaces**
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_PUBLISHABLE_KEY`
+- `VITE_SUPABASE_PROJECT_ID`
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+## API Endpoints
 
-## What technologies are used for this project?
+### Hyperliquid Proxy
 
-This project is built with:
+`POST /functions/v1/hyperliquid-proxy`
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+Proxies requests to Hyperliquid API with caching and rate limiting.
 
-## How can I deploy this project?
+**Request:**
+```json
+{
+  "type": "userFillsByTime",
+  "user": "0x...",
+  "startTime": 1234567890000,
+  "endTime": 1234567890000
+}
+```
 
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
+**Response Headers:**
+- `X-Cache: HIT` — Served from cache
+- `X-Cache: MISS` — Fresh from Hyperliquid
 
-## Can I connect a custom domain to my Lovable project?
+## License
 
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+MIT
