@@ -137,22 +137,26 @@ async function makeApiRequest(payload: object): Promise<Response> {
   });
 }
 
-// Fetch all user fills using pagination
+// Fetch all user fills using pagination - NO LIMITS
 export async function fetchUserFills(address: string): Promise<Fill[]> {
   const allFills: Fill[] = [];
+  const seenTids = new Set<number>();
   
   // Get fills in batches - start from beginning of time
   // Hyperliquid uses milliseconds timestamps
   const now = Date.now();
   const startOfHistory = new Date('2022-01-01').getTime(); // Hyperliquid launch approx
   
-  // Use userFillsByTime with large time windows
-  const windowSize = 30 * 24 * 60 * 60 * 1000; // 30 days in ms
+  // Use userFillsByTime with time windows - use smaller windows for better coverage
+  const windowSize = 14 * 24 * 60 * 60 * 1000; // 14 days in ms for better granularity
   let currentEnd = now;
   let currentStart = currentEnd - windowSize;
-  let hasMore = true;
+  let consecutiveEmpty = 0;
+  const maxConsecutiveEmpty = 6; // Skip ~3 months of empty data before stopping
   
-  while (hasMore && currentEnd > startOfHistory) {
+  console.log(`Fetching fills for ${address} from ${new Date(startOfHistory).toISOString()} to now`);
+  
+  while (currentEnd > startOfHistory && consecutiveEmpty < maxConsecutiveEmpty) {
     try {
       const response = await makeApiRequest({
         type: "userFillsByTime",
@@ -169,35 +173,41 @@ export async function fetchUserFills(address: string): Promise<Fill[]> {
       const fills: Fill[] = await response.json();
       
       if (fills && fills.length > 0) {
-        allFills.push(...fills);
+        // Add only unique fills
+        let newCount = 0;
+        for (const fill of fills) {
+          if (!seenTids.has(fill.tid)) {
+            seenTids.add(fill.tid);
+            allFills.push(fill);
+            newCount++;
+          }
+        }
+        if (newCount > 0) {
+          consecutiveEmpty = 0; // Reset counter when we find data
+        } else {
+          consecutiveEmpty++;
+        }
+        console.log(`Window ${new Date(currentStart).toISOString().split('T')[0]} to ${new Date(currentEnd).toISOString().split('T')[0]}: ${newCount} new fills (${allFills.length} total)`);
+      } else {
+        consecutiveEmpty++;
       }
       
       // Move window back
       currentEnd = currentStart;
       currentStart = currentEnd - windowSize;
       
-      // If we got less than expected, we might be at the end
-      if (!fills || fills.length === 0) {
-        // Try a few more windows to be sure
-        const emptyWindows = allFills.length === 0 ? 3 : 1;
-        for (let i = 0; i < emptyWindows && currentEnd > startOfHistory; i++) {
-          currentEnd = currentStart;
-          currentStart = currentEnd - windowSize;
-        }
-      }
-      
-      // Safety limit to prevent infinite loops
-      if (allFills.length > 50000) {
-        hasMore = false;
-      }
-      
     } catch (error) {
       console.error("Error fetching fills:", error);
-      break;
+      // Continue to next window instead of breaking completely
+      currentEnd = currentStart;
+      currentStart = currentEnd - windowSize;
+      consecutiveEmpty++;
     }
   }
   
-  // Also try the simple userFills endpoint for recent trades
+  console.log(`Finished fetching historical fills: ${allFills.length} total`);
+  
+  // Also try the simple userFills endpoint for recent trades (as backup)
   try {
     const response = await makeApiRequest({
       type: "userFills",
@@ -207,10 +217,15 @@ export async function fetchUserFills(address: string): Promise<Fill[]> {
     if (response.ok) {
       const recentFills: Fill[] = await response.json();
       if (recentFills && recentFills.length > 0) {
-        // Merge without duplicates using tid as unique identifier
-        const existingTids = new Set(allFills.map(f => f.tid));
-        const newFills = recentFills.filter(f => !existingTids.has(f.tid));
-        allFills.push(...newFills);
+        let newCount = 0;
+        for (const fill of recentFills) {
+          if (!seenTids.has(fill.tid)) {
+            seenTids.add(fill.tid);
+            allFills.push(fill);
+            newCount++;
+          }
+        }
+        console.log(`Recent fills endpoint: ${newCount} additional fills`);
       }
     }
   } catch (error) {
@@ -219,6 +234,8 @@ export async function fetchUserFills(address: string): Promise<Fill[]> {
   
   // Sort by time descending
   allFills.sort((a, b) => b.time - a.time);
+  
+  console.log(`Final fill count: ${allFills.length}`);
   
   return allFills;
 }
