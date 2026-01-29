@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useMemo, useState, useEffect } from 'react';
+import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { type DailyPnL, type WeeklyPnL, type Fill } from '@/lib/hyperliquid';
 import { DayTradeBreakdown } from '@/components/DayTradeBreakdown';
@@ -9,6 +9,9 @@ interface PnLCalendarProps {
   dailyPnL: DailyPnL[];
   weeklyPnL: WeeklyPnL[];
   fills: Fill[];
+  isLoadingMonth?: boolean;
+  loadedMonths?: Set<string>;
+  onLoadMonth?: (year: number, month: number) => void;
 }
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -28,10 +31,32 @@ function formatCurrency(value: number): string {
   return value.toFixed(2);
 }
 
-export function PnLCalendar({ dailyPnL, weeklyPnL, fills }: PnLCalendarProps) {
+function getMonthKey(year: number, month: number): string {
+  return `${year}-${String(month + 1).padStart(2, '0')}`;
+}
+
+export function PnLCalendar({ 
+  dailyPnL, 
+  weeklyPnL, 
+  fills, 
+  isLoadingMonth = false,
+  loadedMonths = new Set(),
+  onLoadMonth 
+}: PnLCalendarProps) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [hoveredDay, setHoveredDay] = useState<DailyPnL | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+
+  // Check if current month is loaded
+  const currentMonthKey = getMonthKey(currentDate.getFullYear(), currentDate.getMonth());
+  const isCurrentMonthLoaded = loadedMonths.has(currentMonthKey);
+
+  // Load month when navigating to an unloaded month
+  useEffect(() => {
+    if (onLoadMonth && !isCurrentMonthLoaded && !isLoadingMonth) {
+      onLoadMonth(currentDate.getFullYear(), currentDate.getMonth());
+    }
+  }, [currentDate, isCurrentMonthLoaded, isLoadingMonth, onLoadMonth]);
 
   // Create a map for quick lookup
   const pnlMap = useMemo(() => {
@@ -151,6 +176,17 @@ export function PnLCalendar({ dailyPnL, weeklyPnL, fills }: PnLCalendarProps) {
             <span className="text-sm text-muted-foreground">
               {monthlyTotal.trades} trades
             </span>
+            {isLoadingMonth && (
+              <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                Loading...
+              </span>
+            )}
+            {!isCurrentMonthLoaded && !isLoadingMonth && (
+              <span className="text-xs text-muted-foreground/50">
+                (data not loaded)
+              </span>
+            )}
           </div>
         </div>
         
