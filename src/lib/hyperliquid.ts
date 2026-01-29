@@ -151,22 +151,20 @@ export async function fetchFillsForMonth(
   const endOfMonth = new Date(year, month + 1, 0, 23, 59, 59, 999).getTime();
   
   let currentEnd = endOfMonth;
-  let windowSize = 3 * 24 * 60 * 60 * 1000; // 3 days - smaller for precision
-  const minWindowSize = 2 * 60 * 60 * 1000; // 2 hours minimum
   let requestCount = 0;
-  const maxRequests = 100; // Safety limit per month
+  const maxRequests = 200; // Increased safety limit for high-volume months
   
-  console.log(`Fetching fills for ${year}-${String(month + 1).padStart(2, '0')}`);
+  console.log(`Fetching fills for ${year}-${String(month + 1).padStart(2, '0')} (${new Date(startOfMonth).toISOString()} to ${new Date(endOfMonth).toISOString()})`);
   
+  // Use cursor-based pagination: always move backwards from the earliest fill
   while (currentEnd > startOfMonth && requestCount < maxRequests) {
-    const currentStart = Math.max(currentEnd - windowSize, startOfMonth);
     requestCount++;
     
     try {
       const response = await makeApiRequest({
         type: "userFillsByTime",
         user: address,
-        startTime: currentStart,
+        startTime: startOfMonth,
         endTime: currentEnd,
         aggregateByTime: true,
       });
@@ -177,39 +175,46 @@ export async function fetchFillsForMonth(
 
       const fills: Fill[] = await response.json();
       
-      if (fills && fills.length > 0) {
-        let newCount = 0;
-        let earliestTime = currentEnd;
-        
-        for (const fill of fills) {
-          if (!seenTids.has(fill.tid)) {
-            seenTids.add(fill.tid);
-            allFills.push(fill);
-            newCount++;
-            if (fill.time < earliestTime) {
-              earliestTime = fill.time;
-            }
-          }
+      if (!fills || fills.length === 0) {
+        // No more fills in this range
+        console.log(`Request ${requestCount}: No fills found before ${new Date(currentEnd).toISOString()}`);
+        break;
+      }
+      
+      let newCount = 0;
+      let earliestTime = currentEnd;
+      
+      for (const fill of fills) {
+        if (!seenTids.has(fill.tid)) {
+          seenTids.add(fill.tid);
+          allFills.push(fill);
+          newCount++;
         }
-        
-        // If we hit 2000, use earliest fill time as new end
-        if (fills.length >= 2000) {
-          windowSize = Math.max(windowSize / 2, minWindowSize);
-          currentEnd = earliestTime - 1;
-          continue;
-        }
-        
-        // Restore window size if we're not hitting limits
-        if (fills.length < 1500 && windowSize < 3 * 24 * 60 * 60 * 1000) {
-          windowSize = Math.min(windowSize * 1.5, 3 * 24 * 60 * 60 * 1000);
+        if (fill.time < earliestTime) {
+          earliestTime = fill.time;
         }
       }
       
-      currentEnd = currentStart - 1;
+      console.log(`Request ${requestCount}: Got ${fills.length} fills, ${newCount} new (total: ${allFills.length}), earliest: ${new Date(earliestTime).toISOString()}`);
+      
+      // If we got less than 2000, we've fetched everything in this range
+      if (fills.length < 2000) {
+        break;
+      }
+      
+      // We hit the 2000 limit - continue from the earliest fill time
+      // Subtract 1ms to avoid duplicates
+      currentEnd = earliestTime - 1;
+      
+      // Safety check: if we're not making progress, break
+      if (currentEnd >= endOfMonth) {
+        console.warn('Pagination not making progress, breaking');
+        break;
+      }
       
     } catch (error) {
       console.error("Error fetching fills:", error);
-      currentEnd = currentEnd - windowSize;
+      break;
     }
   }
   
