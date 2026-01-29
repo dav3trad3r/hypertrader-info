@@ -259,10 +259,19 @@ export async function fetchInitialFills(address: string): Promise<Fill[]> {
 }
 
 // Fetch ALL historical fills (for accurate summary stats)
+// Limited to MAX_TRADES to prevent browser overload
+const MAX_TRADES = 50000;
+
+export interface FetchAllFillsResult {
+  fills: Fill[];
+  limitReached: boolean;
+  monthsLoaded: number;
+}
+
 export async function fetchAllFills(
   address: string,
-  onProgress?: (fills: Fill[], monthsLoaded: number) => void
-): Promise<Fill[]> {
+  onProgress?: (fills: Fill[], monthsLoaded: number, limitReached: boolean) => void
+): Promise<FetchAllFillsResult> {
   const allFills: Fill[] = [];
   const seenTids = new Set<number>();
   
@@ -276,6 +285,7 @@ export async function fetchAllFills(
   
   let consecutiveEmptyMonths = 0;
   let monthsLoaded = 0;
+  let limitReached = false;
   
   console.log('Starting full history fetch...');
   
@@ -283,6 +293,13 @@ export async function fetchAllFills(
     currentYear > startYear || 
     (currentYear === startYear && currentMonth >= startMonth)
   ) {
+    // Check if we've hit the trade limit
+    if (allFills.length >= MAX_TRADES) {
+      console.log(`Trade limit reached (${MAX_TRADES}), stopping fetch`);
+      limitReached = true;
+      break;
+    }
+    
     const monthFills = await fetchFillsForMonth(address, currentYear, currentMonth);
     monthsLoaded++;
     
@@ -292,14 +309,22 @@ export async function fetchAllFills(
         if (!seenTids.has(fill.tid)) {
           seenTids.add(fill.tid);
           allFills.push(fill);
+          
+          // Check limit after each addition
+          if (allFills.length >= MAX_TRADES) {
+            limitReached = true;
+            break;
+          }
         }
       }
       console.log(`Total fills so far: ${allFills.length}`);
       
       // Report progress
       if (onProgress) {
-        onProgress([...allFills], monthsLoaded);
+        onProgress([...allFills], monthsLoaded, limitReached);
       }
+      
+      if (limitReached) break;
     } else {
       consecutiveEmptyMonths++;
       // Stop if 6 consecutive months with no trades
@@ -319,9 +344,13 @@ export async function fetchAllFills(
   
   // Sort by time descending
   allFills.sort((a, b) => b.time - a.time);
-  console.log(`Full history fetch complete: ${allFills.length} total fills`);
+  console.log(`Full history fetch complete: ${allFills.length} total fills${limitReached ? ' (limit reached)' : ''}`);
   
-  return allFills;
+  return {
+    fills: allFills,
+    limitReached,
+    monthsLoaded,
+  };
 }
 
 // Legacy function - fetch all fills (kept for compatibility but not recommended)
