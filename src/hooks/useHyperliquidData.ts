@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo } from 'react';
 import { 
-  fetchTradingData, 
+  fetchInitialFills,
+  fetchFillsForMonth, 
   isValidAddress,
   filterFillsByMarket,
   processDailyPnL,
@@ -18,18 +19,27 @@ export interface UseHyperliquidDataReturn {
   filteredData: UserTradingData | null;
   rawFills: Fill[];
   isLoading: boolean;
+  isLoadingMonth: boolean;
+  loadedMonths: Set<string>;
   error: string | null;
   address: string;
   marketType: MarketType;
   setMarketType: (type: MarketType) => void;
   marketCounts: { all: number; perps: number; spot: number };
   fetchData: (address: string) => Promise<void>;
+  loadMonth: (year: number, month: number) => Promise<void>;
   clearData: () => void;
+}
+
+function getMonthKey(year: number, month: number): string {
+  return `${year}-${String(month + 1).padStart(2, '0')}`;
 }
 
 export function useHyperliquidData(): UseHyperliquidDataReturn {
   const [rawFills, setRawFills] = useState<Fill[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingMonth, setIsLoadingMonth] = useState(false);
+  const [loadedMonths, setLoadedMonths] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [address, setAddress] = useState('');
   const [marketType, setMarketType] = useState<MarketType>('all');
@@ -84,6 +94,41 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
     };
   }, [rawFills]);
 
+  // Load additional month data
+  const loadMonth = useCallback(async (year: number, month: number) => {
+    const monthKey = getMonthKey(year, month);
+    
+    // Skip if already loaded or currently loading
+    if (loadedMonths.has(monthKey) || isLoadingMonth || !address) {
+      return;
+    }
+    
+    setIsLoadingMonth(true);
+    
+    try {
+      const monthFills = await fetchFillsForMonth(address, year, month);
+      
+      if (monthFills.length > 0) {
+        setRawFills(prev => {
+          const existingTids = new Set(prev.map(f => f.tid));
+          const newFills = monthFills.filter(f => !existingTids.has(f.tid));
+          
+          if (newFills.length === 0) return prev;
+          
+          const combined = [...prev, ...newFills];
+          combined.sort((a, b) => b.time - a.time);
+          return combined;
+        });
+      }
+      
+      setLoadedMonths(prev => new Set([...prev, monthKey]));
+    } catch (err) {
+      console.error('Error loading month:', err);
+    } finally {
+      setIsLoadingMonth(false);
+    }
+  }, [address, loadedMonths, isLoadingMonth]);
+
   const fetchData = useCallback(async (inputAddress: string) => {
     const trimmedAddress = inputAddress.trim();
     
@@ -100,16 +145,29 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
     setIsLoading(true);
     setError(null);
     setAddress(trimmedAddress);
-    setMarketType('all'); // Reset filter on new search
+    setMarketType('all');
+    setLoadedMonths(new Set());
     
     try {
-      const tradingData = await fetchTradingData(trimmedAddress);
+      const fills = await fetchInitialFills(trimmedAddress);
       
-      if (tradingData.fills.length === 0) {
+      if (fills.length === 0) {
         setError('No trading history found for this address');
         setRawFills([]);
       } else {
-        setRawFills(tradingData.fills);
+        setRawFills(fills);
+        
+        // Mark current month and months with data as loaded
+        const now = new Date();
+        const monthsWithData = new Set<string>();
+        monthsWithData.add(getMonthKey(now.getFullYear(), now.getMonth()));
+        
+        fills.forEach(fill => {
+          const date = new Date(fill.time);
+          monthsWithData.add(getMonthKey(date.getFullYear(), date.getMonth()));
+        });
+        
+        setLoadedMonths(monthsWithData);
       }
     } catch (err) {
       console.error('Error fetching trading data:', err);
@@ -125,6 +183,7 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
     setError(null);
     setAddress('');
     setMarketType('all');
+    setLoadedMonths(new Set());
   }, []);
 
   return {
@@ -132,12 +191,15 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
     filteredData,
     rawFills,
     isLoading,
+    isLoadingMonth,
+    loadedMonths,
     error,
     address,
     marketType,
     setMarketType,
     marketCounts,
     fetchData,
+    loadMonth,
     clearData,
   };
 }

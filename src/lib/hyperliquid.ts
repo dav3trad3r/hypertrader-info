@@ -137,27 +137,29 @@ async function makeApiRequest(payload: object): Promise<Response> {
   });
 }
 
-// Fetch all user fills using pagination - handles high-volume traders
-export async function fetchUserFills(address: string): Promise<Fill[]> {
+// Fetch fills for a specific month (year, month are 0-indexed like JS Date)
+export async function fetchFillsForMonth(
+  address: string, 
+  year: number, 
+  month: number
+): Promise<Fill[]> {
   const allFills: Fill[] = [];
   const seenTids = new Set<number>();
   
-  const now = Date.now();
-  const startOfHistory = new Date('2022-01-01').getTime();
+  // Calculate month boundaries
+  const startOfMonth = new Date(year, month, 1).getTime();
+  const endOfMonth = new Date(year, month + 1, 0, 23, 59, 59, 999).getTime();
   
-  // Use cursor-based pagination: always fetch from currentEnd backwards
-  let currentEnd = now;
-  let windowSize = 7 * 24 * 60 * 60 * 1000; // 7 days initial
-  const minWindowSize = 4 * 60 * 60 * 1000; // 4 hours minimum
-  let consecutiveEmpty = 0;
-  const maxConsecutiveEmpty = 24; // ~6 months of empty data at 7-day windows
+  let currentEnd = endOfMonth;
+  let windowSize = 3 * 24 * 60 * 60 * 1000; // 3 days - smaller for precision
+  const minWindowSize = 2 * 60 * 60 * 1000; // 2 hours minimum
   let requestCount = 0;
-  const maxRequests = 500; // Safety limit
+  const maxRequests = 100; // Safety limit per month
   
-  console.log(`Fetching fills for ${address} from ${new Date(startOfHistory).toISOString()} to now`);
+  console.log(`Fetching fills for ${year}-${String(month + 1).padStart(2, '0')}`);
   
-  while (currentEnd > startOfHistory && consecutiveEmpty < maxConsecutiveEmpty && requestCount < maxRequests) {
-    const currentStart = Math.max(currentEnd - windowSize, startOfHistory);
+  while (currentEnd > startOfMonth && requestCount < maxRequests) {
+    const currentStart = Math.max(currentEnd - windowSize, startOfMonth);
     requestCount++;
     
     try {
@@ -176,7 +178,6 @@ export async function fetchUserFills(address: string): Promise<Fill[]> {
       const fills: Fill[] = await response.json();
       
       if (fills && fills.length > 0) {
-        // Add only unique fills and find the earliest timestamp
         let newCount = 0;
         let earliestTime = currentEnd;
         
@@ -191,48 +192,43 @@ export async function fetchUserFills(address: string): Promise<Fill[]> {
           }
         }
         
-        if (newCount > 0) {
-          consecutiveEmpty = 0;
-          console.log(`Window ${new Date(currentStart).toISOString().split('T')[0]} to ${new Date(currentEnd).toISOString().split('T')[0]}: ${newCount} new fills (${allFills.length} total)`);
-          
-          // If we hit 2000, the API truncated - use earliest fill time as new end
-          if (fills.length >= 2000) {
-            // Shrink window AND move end to earliest fill time for next iteration
-            windowSize = Math.max(windowSize / 2, minWindowSize);
-            currentEnd = earliestTime - 1; // -1 to avoid duplicates
-            console.log(`Hit API limit (2000), shrinking window to ${Math.round(windowSize / (60 * 60 * 1000))}h, continuing from ${new Date(currentEnd).toISOString().split('T')[0]}`);
-            continue;
-          }
-        } else {
-          consecutiveEmpty++;
+        // If we hit 2000, use earliest fill time as new end
+        if (fills.length >= 2000) {
+          windowSize = Math.max(windowSize / 2, minWindowSize);
+          currentEnd = earliestTime - 1;
+          continue;
         }
-        
-        // Normal progression: move to before the current window
-        currentEnd = currentStart - 1;
         
         // Restore window size if we're not hitting limits
-        if (fills.length < 1500 && windowSize < 7 * 24 * 60 * 60 * 1000) {
-          windowSize = Math.min(windowSize * 1.5, 7 * 24 * 60 * 60 * 1000);
+        if (fills.length < 1500 && windowSize < 3 * 24 * 60 * 60 * 1000) {
+          windowSize = Math.min(windowSize * 1.5, 3 * 24 * 60 * 60 * 1000);
         }
-      } else {
-        consecutiveEmpty++;
-        currentEnd = currentStart - 1;
       }
+      
+      currentEnd = currentStart - 1;
       
     } catch (error) {
       console.error("Error fetching fills:", error);
       currentEnd = currentEnd - windowSize;
-      consecutiveEmpty++;
     }
   }
   
-  console.log(`Finished fetching historical fills: ${allFills.length} total, ${requestCount} requests (back to ${new Date(currentEnd).toISOString().split('T')[0]})`);
+  console.log(`Month ${year}-${String(month + 1).padStart(2, '0')}: ${allFills.length} fills, ${requestCount} requests`);
   
-  if (requestCount >= maxRequests) {
-    console.warn(`Reached request limit (${maxRequests}), may have incomplete data`);
-  }
+  return allFills;
+}
+
+// Fetch current month + recent fills (fast initial load)
+export async function fetchInitialFills(address: string): Promise<Fill[]> {
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth();
   
-  // Also fetch recent fills as backup
+  // Fetch current month
+  const currentMonthFills = await fetchFillsForMonth(address, currentYear, currentMonth);
+  const seenTids = new Set(currentMonthFills.map(f => f.tid));
+  
+  // Also fetch recent fills endpoint as backup (gets last 2000)
   try {
     const response = await makeApiRequest({
       type: "userFills",
@@ -242,16 +238,11 @@ export async function fetchUserFills(address: string): Promise<Fill[]> {
     if (response.ok) {
       const recentFills: Fill[] = await response.json();
       if (recentFills && recentFills.length > 0) {
-        let newCount = 0;
         for (const fill of recentFills) {
           if (!seenTids.has(fill.tid)) {
             seenTids.add(fill.tid);
-            allFills.push(fill);
-            newCount++;
+            currentMonthFills.push(fill);
           }
-        }
-        if (newCount > 0) {
-          console.log(`Recent fills endpoint: ${newCount} additional fills`);
         }
       }
     }
@@ -259,10 +250,17 @@ export async function fetchUserFills(address: string): Promise<Fill[]> {
     console.error("Error fetching recent fills:", error);
   }
   
-  allFills.sort((a, b) => b.time - a.time);
-  console.log(`Final fill count: ${allFills.length}`);
+  // Sort by time descending
+  currentMonthFills.sort((a, b) => b.time - a.time);
   
-  return allFills;
+  console.log(`Initial load: ${currentMonthFills.length} fills`);
+  
+  return currentMonthFills;
+}
+
+// Legacy function - fetch all fills (kept for compatibility but not recommended)
+export async function fetchUserFills(address: string): Promise<Fill[]> {
+  return fetchInitialFills(address);
 }
 
 // Process fills into daily PnL data

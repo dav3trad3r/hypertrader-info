@@ -16,13 +16,16 @@ const Index = () => {
   const { 
     filteredData, 
     rawFills,
-    isLoading, 
+    isLoading,
+    isLoadingMonth,
+    loadedMonths,
     error, 
     address, 
     marketType,
     setMarketType,
     marketCounts,
-    fetchData, 
+    fetchData,
+    loadMonth,
     clearData 
   } = useHyperliquidData();
 
@@ -107,6 +110,9 @@ const Index = () => {
                       dailyPnL={displayData.dailyPnL} 
                       weeklyPnL={displayData.weeklyPnL}
                       fills={displayData.fills}
+                      isLoadingMonth={isLoadingMonth}
+                      loadedMonths={loadedMonths}
+                      onLoadMonth={loadMonth}
                     />
                   </div>
 
