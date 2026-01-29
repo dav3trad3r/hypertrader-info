@@ -258,36 +258,17 @@ export async function fetchInitialFills(address: string): Promise<Fill[]> {
   return currentMonthFills;
 }
 
-// Fetch ALL historical fills (for accurate summary stats)
-// Limited to MAX_TRADES to prevent browser overload
-const MAX_TRADES = 50000;
-
-export interface FetchAllFillsResult {
+// Fetch recent fills only (fast initial load)
+// Uses userFills API which returns up to 2000 most recent trades
+export interface FetchRecentFillsResult {
   fills: Fill[];
-  limitReached: boolean;
-  monthsLoaded: number;
+  hasMoreHistory: boolean;
 }
 
-export async function fetchAllFills(
-  address: string,
-  onProgress?: (fills: Fill[], monthsLoaded: number, limitReached: boolean, currentMonth: string) => void
-): Promise<FetchAllFillsResult> {
-  const allFills: Fill[] = [];
-  const seenTids = new Set<number>();
+export async function fetchRecentFills(address: string): Promise<FetchRecentFillsResult> {
+  const fills: Fill[] = [];
   
-  // Go back to Jan 2022 as earliest possible date
-  const startYear = 2022;
-  const startMonth = 0;
-  
-  let monthsLoaded = 0;
-  let limitReached = false;
-  
-  console.log('Starting full history fetch...');
-  
-  // First, fetch recent fills to determine where trading activity exists
-  // This helps us not stop early if user hasn't traded recently
-  let earliestTradeTime = Date.now();
-  let latestTradeTime = 0;
+  console.log('Fetching recent trades...');
   
   try {
     const response = await makeApiRequest({
@@ -298,111 +279,26 @@ export async function fetchAllFills(
     if (response.ok) {
       const recentFills: Fill[] = await response.json();
       if (recentFills && recentFills.length > 0) {
-        console.log(`Found ${recentFills.length} recent trades via userFills`);
-        for (const fill of recentFills) {
-          if (!seenTids.has(fill.tid)) {
-            seenTids.add(fill.tid);
-            allFills.push(fill);
-            if (fill.time < earliestTradeTime) earliestTradeTime = fill.time;
-            if (fill.time > latestTradeTime) latestTradeTime = fill.time;
-          }
-        }
-        
-        // Report initial progress
-        if (onProgress) {
-          onProgress([...allFills], 0, false, 'Recent trades');
-        }
+        console.log(`Found ${recentFills.length} recent trades`);
+        fills.push(...recentFills);
       }
     }
   } catch (error) {
     console.error("Error fetching recent fills:", error);
-  }
-  
-  // If we found trades, scan from the earliest trade month backwards
-  // If no trades found, start from current month
-  const now = new Date();
-  let currentYear: number;
-  let currentMonth: number;
-  
-  if (earliestTradeTime < Date.now()) {
-    // Start from the month of the earliest trade we found
-    const earliestDate = new Date(earliestTradeTime);
-    currentYear = earliestDate.getFullYear();
-    currentMonth = earliestDate.getMonth();
-    console.log(`Starting scan from earliest known trade: ${currentYear}-${currentMonth + 1}`);
-  } else {
-    // No trades found yet, start from current month
-    currentYear = now.getFullYear();
-    currentMonth = now.getMonth();
-    console.log('No trades found via userFills, scanning from current month');
-  }
-  
-  let consecutiveEmptyMonths = 0;
-  // Increase tolerance for accounts that may have gaps
-  const MAX_CONSECUTIVE_EMPTY = 12; // 12 months instead of 6
-  
-  while (
-    currentYear > startYear || 
-    (currentYear === startYear && currentMonth >= startMonth)
-  ) {
-    // Check if we've hit the trade limit
-    if (allFills.length >= MAX_TRADES) {
-      console.log(`Trade limit reached (${MAX_TRADES}), stopping fetch`);
-      limitReached = true;
-      break;
-    }
-    
-    const monthLabel = new Date(currentYear, currentMonth).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-    const monthFills = await fetchFillsForMonth(address, currentYear, currentMonth);
-    monthsLoaded++;
-    
-    if (monthFills.length > 0) {
-      consecutiveEmptyMonths = 0;
-      for (const fill of monthFills) {
-        if (!seenTids.has(fill.tid)) {
-          seenTids.add(fill.tid);
-          allFills.push(fill);
-          
-          // Check limit after each addition
-          if (allFills.length >= MAX_TRADES) {
-            limitReached = true;
-            break;
-          }
-        }
-      }
-      console.log(`Total fills so far: ${allFills.length}`);
-      
-      // Report progress
-      if (onProgress) {
-        onProgress([...allFills], monthsLoaded, limitReached, monthLabel);
-      }
-      
-      if (limitReached) break;
-    } else {
-      consecutiveEmptyMonths++;
-      // Stop if too many consecutive months with no trades
-      if (consecutiveEmptyMonths >= MAX_CONSECUTIVE_EMPTY) {
-        console.log(`No trades for ${MAX_CONSECUTIVE_EMPTY} months, stopping fetch`);
-        break;
-      }
-    }
-    
-    // Move to previous month
-    currentMonth--;
-    if (currentMonth < 0) {
-      currentMonth = 11;
-      currentYear--;
-    }
+    throw error;
   }
   
   // Sort by time descending
-  allFills.sort((a, b) => b.time - a.time);
-  console.log(`Full history fetch complete: ${allFills.length} total fills${limitReached ? ' (limit reached)' : ''}`);
+  fills.sort((a, b) => b.time - a.time);
+  
+  // If we got exactly 2000 fills, there's likely more history
+  const hasMoreHistory = fills.length >= 2000;
+  
+  console.log(`Initial load complete: ${fills.length} trades${hasMoreHistory ? ' (more history available)' : ''}`);
   
   return {
-    fills: allFills,
-    limitReached,
-    monthsLoaded,
+    fills,
+    hasMoreHistory,
   };
 }
 

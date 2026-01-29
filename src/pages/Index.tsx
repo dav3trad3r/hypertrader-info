@@ -17,9 +17,8 @@ const Index = () => {
     filteredData, 
     rawFills,
     isLoading,
-    isLoadingHistory,
-    loadingProgress,
-    loadedMonths,
+    isLoadingMonth,
+    hasMoreHistory,
     error, 
     address, 
     marketType,
@@ -27,6 +26,7 @@ const Index = () => {
     marketCounts,
     fetchData,
     loadMonth,
+    loadedMonths,
     clearData 
   } = useHyperliquidData();
 
@@ -48,7 +48,7 @@ const Index = () => {
         </div>
 
         {/* Loading State */}
-        {isLoading && <LoadingSpinner progress={loadingProgress} />}
+        {isLoading && <LoadingSpinner />}
 
         {/* Error State */}
         {error && !isLoading && (
@@ -72,9 +72,14 @@ const Index = () => {
                   <p className="font-mono text-sm text-foreground truncate max-w-md">
                     {address}
                   </p>
-                  {isLoadingHistory && (
+                  {isLoadingMonth && (
                     <p className="text-xs text-primary mt-1 animate-pulse">
-                      Loading complete history... ({rawFills.length.toLocaleString()} trades)
+                      Loading month data...
+                    </p>
+                  )}
+                  {hasMoreHistory && !isLoadingMonth && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Navigate to earlier months to load more history
                     </p>
                   )}
                 </div>
