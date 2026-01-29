@@ -219,14 +219,23 @@ export function LiveTrades({ address, marketType }: LiveTradesProps) {
 
     const fetchPositions = async () => {
       try {
-        // Fetch both perp and spot positions in parallel
-        const [perpResponse, spotResponse] = await Promise.all([
+        // Fetch perp (main dex), HIP-3 perp (xyz dex), and spot positions in parallel
+        const [perpResponse, xyzPerpResponse, spotResponse] = await Promise.all([
           fetch(HYPERLIQUID_API, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               type: "clearinghouseState",
               user: address,
+            }),
+          }),
+          fetch(HYPERLIQUID_API, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              type: "clearinghouseState",
+              user: address,
+              dex: "xyz", // HIP-3 stock perps (NVDA, TSLA, etc.)
             }),
           }),
           fetch(HYPERLIQUID_API, {
@@ -244,11 +253,12 @@ export function LiveTrades({ address, marketType }: LiveTradesProps) {
           ...spotPositions.map(p => p.coin),
         ]);
 
-        // Process perp positions
+        // Process perp positions from main dex
+        let mainPerps: PerpPosition[] = [];
         if (perpResponse.ok) {
           const perpData: ClearinghouseState = await perpResponse.json();
           if (perpData?.assetPositions) {
-            const openPerps: PerpPosition[] = perpData.assetPositions
+            mainPerps = perpData.assetPositions
               .filter(ap => parseFloat(ap.position.szi) !== 0)
               .map(ap => ({
                 type: 'perp' as const,
@@ -260,9 +270,31 @@ export function LiveTrades({ address, marketType }: LiveTradesProps) {
                 returnOnEquity: ap.position.returnOnEquity,
                 leverage: ap.position.leverage,
               }));
-            setPerpPositions(openPerps);
           }
         }
+
+        // Process HIP-3 perp positions from xyz dex
+        let xyzPerps: PerpPosition[] = [];
+        if (xyzPerpResponse.ok) {
+          const xyzData: ClearinghouseState = await xyzPerpResponse.json();
+          if (xyzData?.assetPositions) {
+            xyzPerps = xyzData.assetPositions
+              .filter(ap => parseFloat(ap.position.szi) !== 0)
+              .map(ap => ({
+                type: 'perp' as const,
+                coin: ap.position.coin, // Already prefixed with xyz: from the API
+                szi: ap.position.szi,
+                entryPx: ap.position.entryPx,
+                positionValue: ap.position.positionValue,
+                unrealizedPnl: ap.position.unrealizedPnl,
+                returnOnEquity: ap.position.returnOnEquity,
+                leverage: ap.position.leverage,
+              }));
+          }
+        }
+
+        // Combine both dex positions
+        setPerpPositions([...mainPerps, ...xyzPerps]);
 
         // Process spot positions
         if (spotResponse.ok) {
