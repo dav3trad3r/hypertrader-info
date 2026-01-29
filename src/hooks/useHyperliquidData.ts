@@ -16,6 +16,13 @@ import {
 } from '@/lib/hyperliquid';
 import { toast } from '@/hooks/use-toast';
 
+export interface LoadingProgress {
+  tradesLoaded: number;
+  monthsScanned: number;
+  currentMonth: string;
+  limitReached: boolean;
+}
+
 export interface UseHyperliquidDataReturn {
   data: UserTradingData | null;
   filteredData: UserTradingData | null;
@@ -23,6 +30,7 @@ export interface UseHyperliquidDataReturn {
   isLoading: boolean;
   isLoadingHistory: boolean;
   isLoadingMonth: boolean;
+  loadingProgress: LoadingProgress | null;
   loadedMonths: Set<string>;
   error: string | null;
   address: string;
@@ -48,6 +56,7 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
   const [error, setError] = useState<string | null>(null);
   const [address, setAddress] = useState('');
   const [marketType, setMarketType] = useState<MarketType>('all');
+  const [loadingProgress, setLoadingProgress] = useState<LoadingProgress | null>(null);
   
   // All useRef hooks together
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -193,12 +202,21 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
     setMarketType('all');
     setLoadedMonths(new Set());
     setRawFills([]);
+    setLoadingProgress({ tradesLoaded: 0, monthsScanned: 0, currentMonth: '', limitReached: false });
     
     try {
       // Fetch ALL historical data for accurate summary
-      const result = await fetchAllFills(trimmedAddress, (progressFills, monthsLoaded, limitReached) => {
+      const result = await fetchAllFills(trimmedAddress, (progressFills, monthsLoaded, limitReached, currentMonthLabel) => {
         // Update fills progressively as they load
         setRawFills(progressFills);
+        
+        // Update loading progress
+        setLoadingProgress({
+          tradesLoaded: progressFills.length,
+          monthsScanned: monthsLoaded,
+          currentMonth: currentMonthLabel || '',
+          limitReached,
+        });
         
         // Mark months with data as loaded
         const monthsWithData = new Set<string>();
@@ -240,6 +258,7 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
     } finally {
       setIsLoading(false);
       setIsLoadingHistory(false);
+      setLoadingProgress(null);
     }
   }, []);
 
@@ -253,6 +272,7 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
     setMarketType('all');
     setLoadedMonths(new Set());
     setIsLoadingHistory(false);
+    setLoadingProgress(null);
   }, []);
 
   return {
@@ -262,6 +282,7 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
     isLoading,
     isLoadingHistory,
     isLoadingMonth,
+    loadingProgress,
     loadedMonths,
     error,
     address,
