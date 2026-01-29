@@ -1,5 +1,7 @@
 // Hyperliquid API Types and Services
 
+export type MarketType = 'all' | 'perps' | 'spot';
+
 export interface Fill {
   closedPnl: string;
   coin: string;
@@ -16,6 +18,18 @@ export interface Fill {
   feeToken: string;
   builderFee?: string;
   tid: number;
+}
+
+// Helper to determine if a fill is a spot trade
+export function isSpotTrade(fill: Fill): boolean {
+  return fill.coin.startsWith('@');
+}
+
+// Filter fills by market type
+export function filterFillsByMarket(fills: Fill[], marketType: MarketType): Fill[] {
+  if (marketType === 'all') return fills;
+  if (marketType === 'spot') return fills.filter(f => isSpotTrade(f));
+  return fills.filter(f => !isSpotTrade(f)); // perps
 }
 
 export interface DailyPnL {
