@@ -19,6 +19,7 @@ const Index = () => {
     isLoading,
     isLoadingMonth,
     hasMoreHistory,
+    hitApiLimit,
     error, 
     address, 
     marketType,
@@ -64,6 +65,35 @@ const Index = () => {
         {/* Data Display */}
         {rawFills.length > 0 && !isLoading && (
           <div className="space-y-6 animate-fade-in">
+            {/* API Limit Warning */}
+            {hitApiLimit && (
+              <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-4 flex items-start gap-3">
+                <svg 
+                  className="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" 
+                  fill="none" 
+                  viewBox="0 0 24 24" 
+                  stroke="currentColor"
+                >
+                  <path 
+                    strokeLinecap="round" 
+                    strokeLinejoin="round" 
+                    strokeWidth={2} 
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" 
+                  />
+                </svg>
+                <div>
+                  <p className="text-sm font-medium text-destructive">
+                    API Limit Reached
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Hyperliquid's API only provides access to the most recent ~10,000 trades. 
+                    Older trading history is not available through the direct API. 
+                    For complete history, consider using a third-party indexer like Allium or Nansen.
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* Address Banner with Filter */}
             <div className="bg-card border border-border rounded-lg p-4">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -72,16 +102,10 @@ const Index = () => {
                   <p className="font-mono text-sm text-foreground truncate max-w-md">
                     {address}
                   </p>
-                  {isLoadingMonth && (
-                    <p className="text-xs text-primary mt-1 animate-pulse">
-                      Loading month data...
-                    </p>
-                  )}
-                  {hasMoreHistory && !isLoadingMonth && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Navigate to earlier months to load more history
-                    </p>
-                  )}
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {rawFills.length.toLocaleString()} trades loaded
+                    {isLoadingMonth && <span className="text-primary animate-pulse ml-2">• Loading more...</span>}
+                  </p>
                 </div>
                 
                 <div className="flex items-center gap-2">
