@@ -6,7 +6,7 @@ export function Header() {
       <div className="container mx-auto px-4 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-primary/10 glow-green">
+            <div className="p-2 rounded-lg bg-primary/10 glow-teal">
               <Activity className="w-6 h-6 text-primary" />
             </div>
             <div>
