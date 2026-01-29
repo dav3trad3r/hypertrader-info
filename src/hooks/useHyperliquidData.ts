@@ -38,6 +38,7 @@ function getMonthKey(year: number, month: number): string {
 }
 
 export function useHyperliquidData(): UseHyperliquidDataReturn {
+  // All useState hooks first
   const [rawFills, setRawFills] = useState<Fill[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
@@ -46,11 +47,24 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
   const [error, setError] = useState<string | null>(null);
   const [address, setAddress] = useState('');
   const [marketType, setMarketType] = useState<MarketType>('all');
+  
+  // All useRef hooks together
   const abortControllerRef = useRef<AbortController | null>(null);
   const loadingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const toastShownRef = useRef(false);
 
-  // Show toast after 5 seconds of loading
+  // All useMemo hooks together
+  const marketCounts = useMemo(() => {
+    const perps = rawFills.filter(f => !isSpotTrade(f)).length;
+    const spot = rawFills.filter(f => isSpotTrade(f)).length;
+    return {
+      all: rawFills.length,
+      perps,
+      spot,
+    };
+  }, [rawFills]);
+
+  // useEffect for loading toast notification
   useEffect(() => {
     if (isLoadingHistory && !toastShownRef.current) {
       loadingTimerRef.current = setTimeout(() => {
@@ -77,17 +91,6 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
       }
     };
   }, [isLoadingHistory]);
-
-  // Calculate market counts
-  const marketCounts = useMemo(() => {
-    const perps = rawFills.filter(f => !isSpotTrade(f)).length;
-    const spot = rawFills.filter(f => isSpotTrade(f)).length;
-    return {
-      all: rawFills.length,
-      perps,
-      spot,
-    };
-  }, [rawFills]);
 
   // Filter and recalculate data based on market type
   const filteredData = useMemo(() => {
