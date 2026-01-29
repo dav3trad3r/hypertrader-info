@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, useRef } from 'react';
 import { 
-  fetchRecentFills,
+  fetchAllAvailableFills,
   fetchFillsForMonth, 
   isValidAddress,
   filterFillsByMarket,
@@ -23,6 +23,7 @@ export interface UseHyperliquidDataReturn {
   isLoadingMonth: boolean;
   loadedMonths: Set<string>;
   hasMoreHistory: boolean;
+  hitApiLimit: boolean;
   error: string | null;
   address: string;
   marketType: MarketType;
@@ -43,6 +44,7 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
   const [isLoadingMonth, setIsLoadingMonth] = useState(false);
   const [loadedMonths, setLoadedMonths] = useState<Set<string>>(new Set());
   const [hasMoreHistory, setHasMoreHistory] = useState(false);
+  const [hitApiLimit, setHitApiLimit] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [address, setAddress] = useState('');
   const [marketType, setMarketType] = useState<MarketType>('all');
@@ -164,19 +166,20 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
     setLoadedMonths(new Set());
     setRawFills([]);
     setHasMoreHistory(false);
+    setHitApiLimit(false);
     
     try {
-      // Only fetch recent fills (up to 2000 trades) for fast initial load
-      const result = await fetchRecentFills(trimmedAddress);
+      // Fetch ALL available fills (up to 10K API limit)
+      const result = await fetchAllAvailableFills(trimmedAddress);
       
       if (result.fills.length === 0) {
         setError('No trading history found for this address');
         setRawFills([]);
       } else {
         setRawFills(result.fills);
-        setHasMoreHistory(result.hasMoreHistory);
+        setHitApiLimit(result.hitApiLimit);
         
-        // Mark months that have data as loaded
+        // Mark all months that have data as loaded
         const monthsWithData = new Set<string>();
         result.fills.forEach(fill => {
           const date = new Date(fill.time);
@@ -184,12 +187,19 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
         });
         setLoadedMonths(monthsWithData);
         
-        // Inform user if there's more history available
-        if (result.hasMoreHistory) {
+        // Show appropriate toast
+        if (result.hitApiLimit) {
           toast({
-            title: "Recent trades loaded",
-            description: "Showing the most recent 2,000 trades. Navigate to earlier months in the calendar to load more history.",
-            duration: 5000,
+            title: "API limit reached",
+            description: `Loaded ${result.totalFetched.toLocaleString()} trades. Hyperliquid's API only allows access to the most recent ~10,000 fills. Older history is not available.`,
+            variant: "destructive",
+            duration: 8000,
+          });
+        } else {
+          toast({
+            title: "Trades loaded",
+            description: `Successfully loaded ${result.totalFetched.toLocaleString()} trades.`,
+            duration: 3000,
           });
         }
       }
@@ -212,6 +222,7 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
     setMarketType('all');
     setLoadedMonths(new Set());
     setHasMoreHistory(false);
+    setHitApiLimit(false);
   }, []);
 
   return {
@@ -222,6 +233,7 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
     isLoadingMonth,
     loadedMonths,
     hasMoreHistory,
+    hitApiLimit,
     error,
     address,
     marketType,

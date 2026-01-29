@@ -137,6 +137,132 @@ async function makeApiRequest(payload: object): Promise<Response> {
   });
 }
 
+// API limits
+const FILLS_PER_REQUEST = 2000;
+const MAX_ACCESSIBLE_FILLS = 10000; // Hyperliquid only allows access to most recent 10K fills
+
+export interface FetchFillsResult {
+  fills: Fill[];
+  hitApiLimit: boolean;
+  totalFetched: number;
+}
+
+// Fetch ALL available fills using proper cursor-based pagination
+// Returns up to 10K fills (the API limit) with indicator if limit was hit
+export async function fetchAllAvailableFills(address: string): Promise<FetchFillsResult> {
+  const allFills: Fill[] = [];
+  const seenTids = new Set<number>();
+  
+  // Start from now and paginate backwards
+  let currentEnd = Date.now();
+  let requestCount = 0;
+  const maxRequests = 50; // Safety limit (50 * 2000 = 100K theoretical max, but API caps at 10K)
+  let hitApiLimit = false;
+  let consecutiveEmptyRequests = 0;
+  
+  console.log(`Fetching all available fills for ${address}...`);
+  
+  while (requestCount < maxRequests && allFills.length < MAX_ACCESSIBLE_FILLS) {
+    requestCount++;
+    
+    try {
+      // Always query from very beginning of time to current end point
+      // This ensures we get the most recent fills before our cursor
+      const response = await makeApiRequest({
+        type: "userFillsByTime",
+        user: address,
+        startTime: 0, // Beginning of time
+        endTime: currentEnd,
+        aggregateByTime: true,
+      });
+
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
+
+      const fills: Fill[] = await response.json();
+      
+      if (!fills || fills.length === 0) {
+        consecutiveEmptyRequests++;
+        if (consecutiveEmptyRequests >= 2) {
+          console.log(`No more fills available after ${requestCount} requests`);
+          break;
+        }
+        continue;
+      }
+      
+      consecutiveEmptyRequests = 0;
+      let newCount = 0;
+      let earliestTime = currentEnd;
+      
+      for (const fill of fills) {
+        if (!seenTids.has(fill.tid)) {
+          seenTids.add(fill.tid);
+          allFills.push(fill);
+          newCount++;
+        }
+        if (fill.time < earliestTime) {
+          earliestTime = fill.time;
+        }
+      }
+      
+      console.log(`Request ${requestCount}: Got ${fills.length} fills, ${newCount} new (total: ${allFills.length}), range: ${new Date(earliestTime).toISOString()} to ${new Date(currentEnd).toISOString()}`);
+      
+      // If we got less than 2000, we've fetched everything available
+      if (fills.length < FILLS_PER_REQUEST) {
+        console.log(`Received ${fills.length} < ${FILLS_PER_REQUEST}, all available data fetched`);
+        break;
+      }
+      
+      // We hit the 2000 limit - continue from the earliest fill time
+      // Subtract 1ms to avoid duplicates
+      const newEnd = earliestTime - 1;
+      
+      // Safety check: if we're not making progress, break
+      if (newEnd >= currentEnd) {
+        console.warn('Pagination not making progress, breaking');
+        break;
+      }
+      
+      currentEnd = newEnd;
+      
+      // Check if we've hit the 10K API limit
+      if (allFills.length >= MAX_ACCESSIBLE_FILLS) {
+        hitApiLimit = true;
+        console.log(`Hit the ${MAX_ACCESSIBLE_FILLS} fill API limit`);
+        break;
+      }
+      
+      // Also check if we got exactly 2000 fills 5 times in a row and total is ~10K
+      // This suggests we're hitting the invisible API cap
+      if (allFills.length >= MAX_ACCESSIBLE_FILLS - FILLS_PER_REQUEST && fills.length === FILLS_PER_REQUEST) {
+        // Do one more request to confirm we're at the limit
+        continue;
+      }
+      
+    } catch (error) {
+      console.error("Error fetching fills:", error);
+      break;
+    }
+  }
+  
+  // Sort by time descending (most recent first)
+  allFills.sort((a, b) => b.time - a.time);
+  
+  // Detect if we likely hit the API limit (got close to 10K and last request was full)
+  if (allFills.length >= MAX_ACCESSIBLE_FILLS * 0.95) {
+    hitApiLimit = true;
+  }
+  
+  console.log(`Fetch complete: ${allFills.length} fills, ${requestCount} requests, hitLimit: ${hitApiLimit}`);
+  
+  return {
+    fills: allFills,
+    hitApiLimit,
+    totalFetched: allFills.length,
+  };
+}
+
 // Fetch fills for a specific month (year, month are 0-indexed like JS Date)
 export async function fetchFillsForMonth(
   address: string, 
@@ -152,7 +278,7 @@ export async function fetchFillsForMonth(
   
   let currentEnd = endOfMonth;
   let requestCount = 0;
-  const maxRequests = 200; // Increased safety limit for high-volume months
+  const maxRequests = 50; // Safety limit per month
   
   console.log(`Fetching fills for ${year}-${String(month + 1).padStart(2, '0')} (${new Date(startOfMonth).toISOString()} to ${new Date(endOfMonth).toISOString()})`);
   
@@ -176,7 +302,6 @@ export async function fetchFillsForMonth(
       const fills: Fill[] = await response.json();
       
       if (!fills || fills.length === 0) {
-        // No more fills in this range
         console.log(`Request ${requestCount}: No fills found before ${new Date(currentEnd).toISOString()}`);
         break;
       }
@@ -198,12 +323,11 @@ export async function fetchFillsForMonth(
       console.log(`Request ${requestCount}: Got ${fills.length} fills, ${newCount} new (total: ${allFills.length}), earliest: ${new Date(earliestTime).toISOString()}`);
       
       // If we got less than 2000, we've fetched everything in this range
-      if (fills.length < 2000) {
+      if (fills.length < FILLS_PER_REQUEST) {
         break;
       }
       
       // We hit the 2000 limit - continue from the earliest fill time
-      // Subtract 1ms to avoid duplicates
       currentEnd = earliestTime - 1;
       
       // Safety check: if we're not making progress, break
