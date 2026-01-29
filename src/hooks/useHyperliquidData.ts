@@ -1,6 +1,6 @@
-import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import { useState, useCallback, useMemo, useRef } from 'react';
 import { 
-  fetchAllFills,
+  fetchRecentFills,
   fetchFillsForMonth, 
   isValidAddress,
   filterFillsByMarket,
@@ -12,26 +12,17 @@ import {
   type UserTradingData,
   type MarketType,
   type Fill,
-  type FetchAllFillsResult,
 } from '@/lib/hyperliquid';
 import { toast } from '@/hooks/use-toast';
-
-export interface LoadingProgress {
-  tradesLoaded: number;
-  monthsScanned: number;
-  currentMonth: string;
-  limitReached: boolean;
-}
 
 export interface UseHyperliquidDataReturn {
   data: UserTradingData | null;
   filteredData: UserTradingData | null;
   rawFills: Fill[];
   isLoading: boolean;
-  isLoadingHistory: boolean;
   isLoadingMonth: boolean;
-  loadingProgress: LoadingProgress | null;
   loadedMonths: Set<string>;
+  hasMoreHistory: boolean;
   error: string | null;
   address: string;
   marketType: MarketType;
@@ -47,23 +38,17 @@ function getMonthKey(year: number, month: number): string {
 }
 
 export function useHyperliquidData(): UseHyperliquidDataReturn {
-  // All useState hooks first
   const [rawFills, setRawFills] = useState<Fill[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isLoadingMonth, setIsLoadingMonth] = useState(false);
   const [loadedMonths, setLoadedMonths] = useState<Set<string>>(new Set());
+  const [hasMoreHistory, setHasMoreHistory] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [address, setAddress] = useState('');
   const [marketType, setMarketType] = useState<MarketType>('all');
-  const [loadingProgress, setLoadingProgress] = useState<LoadingProgress | null>(null);
   
-  // All useRef hooks together
   const abortControllerRef = useRef<AbortController | null>(null);
-  const loadingTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const toastShownRef = useRef(false);
 
-  // All useMemo hooks together
   const marketCounts = useMemo(() => {
     const perps = rawFills.filter(f => !isSpotTrade(f)).length;
     const spot = rawFills.filter(f => isSpotTrade(f)).length;
@@ -73,34 +58,6 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
       spot,
     };
   }, [rawFills]);
-
-  // useEffect for loading toast notification
-  useEffect(() => {
-    if (isLoadingHistory && !toastShownRef.current) {
-      loadingTimerRef.current = setTimeout(() => {
-        toastShownRef.current = true;
-        toast({
-          title: "Loading complete trading history",
-          description: "High-volume accounts may have thousands of trades across many months. We're fetching all data to ensure accurate summary statistics.",
-          duration: 8000,
-        });
-      }, 5000);
-    }
-
-    if (!isLoadingHistory) {
-      if (loadingTimerRef.current) {
-        clearTimeout(loadingTimerRef.current);
-        loadingTimerRef.current = null;
-      }
-      toastShownRef.current = false;
-    }
-
-    return () => {
-      if (loadingTimerRef.current) {
-        clearTimeout(loadingTimerRef.current);
-      }
-    };
-  }, [isLoadingHistory]);
 
   // Filter and recalculate data based on market type
   const filteredData = useMemo(() => {
@@ -141,7 +98,7 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
     };
   }, [rawFills]);
 
-  // Load additional month data
+  // Load additional month data (lazy loading)
   const loadMonth = useCallback(async (year: number, month: number) => {
     const monthKey = getMonthKey(year, month);
     
@@ -171,6 +128,11 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
       setLoadedMonths(prev => new Set([...prev, monthKey]));
     } catch (err) {
       console.error('Error loading month:', err);
+      toast({
+        title: "Failed to load month",
+        description: "Could not fetch trades for this month. Please try again.",
+        variant: "destructive",
+      });
     } finally {
       setIsLoadingMonth(false);
     }
@@ -196,44 +158,25 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
     abortControllerRef.current = new AbortController();
     
     setIsLoading(true);
-    setIsLoadingHistory(true);
     setError(null);
     setAddress(trimmedAddress);
     setMarketType('all');
     setLoadedMonths(new Set());
     setRawFills([]);
-    setLoadingProgress({ tradesLoaded: 0, monthsScanned: 0, currentMonth: '', limitReached: false });
+    setHasMoreHistory(false);
     
     try {
-      // Fetch ALL historical data for accurate summary
-      const result = await fetchAllFills(trimmedAddress, (progressFills, monthsLoaded, limitReached, currentMonthLabel) => {
-        // Update fills progressively as they load
-        setRawFills(progressFills);
-        
-        // Update loading progress
-        setLoadingProgress({
-          tradesLoaded: progressFills.length,
-          monthsScanned: monthsLoaded,
-          currentMonth: currentMonthLabel || '',
-          limitReached,
-        });
-        
-        // Mark months with data as loaded
-        const monthsWithData = new Set<string>();
-        progressFills.forEach(fill => {
-          const date = new Date(fill.time);
-          monthsWithData.add(getMonthKey(date.getFullYear(), date.getMonth()));
-        });
-        setLoadedMonths(monthsWithData);
-      });
+      // Only fetch recent fills (up to 2000 trades) for fast initial load
+      const result = await fetchRecentFills(trimmedAddress);
       
       if (result.fills.length === 0) {
         setError('No trading history found for this address');
         setRawFills([]);
       } else {
         setRawFills(result.fills);
+        setHasMoreHistory(result.hasMoreHistory);
         
-        // Mark all months with data as loaded
+        // Mark months that have data as loaded
         const monthsWithData = new Set<string>();
         result.fills.forEach(fill => {
           const date = new Date(fill.time);
@@ -241,13 +184,12 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
         });
         setLoadedMonths(monthsWithData);
         
-        // Show warning if limit was reached
-        if (result.limitReached) {
+        // Inform user if there's more history available
+        if (result.hasMoreHistory) {
           toast({
-            title: "Partial history loaded",
-            description: `This account has more than 50,000 trades. Only the most recent 50K trades are shown to ensure app performance. Summary statistics reflect loaded data only.`,
-            duration: 10000,
-            variant: "destructive",
+            title: "Recent trades loaded",
+            description: "Showing the most recent 2,000 trades. Navigate to earlier months in the calendar to load more history.",
+            duration: 5000,
           });
         }
       }
@@ -257,8 +199,6 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
       setRawFills([]);
     } finally {
       setIsLoading(false);
-      setIsLoadingHistory(false);
-      setLoadingProgress(null);
     }
   }, []);
 
@@ -271,8 +211,7 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
     setAddress('');
     setMarketType('all');
     setLoadedMonths(new Set());
-    setIsLoadingHistory(false);
-    setLoadingProgress(null);
+    setHasMoreHistory(false);
   }, []);
 
   return {
@@ -280,10 +219,9 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
     filteredData,
     rawFills,
     isLoading,
-    isLoadingHistory,
     isLoadingMonth,
-    loadingProgress,
     loadedMonths,
+    hasMoreHistory,
     error,
     address,
     marketType,
