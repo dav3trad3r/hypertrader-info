@@ -258,6 +258,72 @@ export async function fetchInitialFills(address: string): Promise<Fill[]> {
   return currentMonthFills;
 }
 
+// Fetch ALL historical fills (for accurate summary stats)
+export async function fetchAllFills(
+  address: string,
+  onProgress?: (fills: Fill[], monthsLoaded: number) => void
+): Promise<Fill[]> {
+  const allFills: Fill[] = [];
+  const seenTids = new Set<number>();
+  
+  const now = new Date();
+  let currentYear = now.getFullYear();
+  let currentMonth = now.getMonth();
+  
+  // Go back to Jan 2022 as earliest possible date
+  const startYear = 2022;
+  const startMonth = 0;
+  
+  let consecutiveEmptyMonths = 0;
+  let monthsLoaded = 0;
+  
+  console.log('Starting full history fetch...');
+  
+  while (
+    currentYear > startYear || 
+    (currentYear === startYear && currentMonth >= startMonth)
+  ) {
+    const monthFills = await fetchFillsForMonth(address, currentYear, currentMonth);
+    monthsLoaded++;
+    
+    if (monthFills.length > 0) {
+      consecutiveEmptyMonths = 0;
+      for (const fill of monthFills) {
+        if (!seenTids.has(fill.tid)) {
+          seenTids.add(fill.tid);
+          allFills.push(fill);
+        }
+      }
+      console.log(`Total fills so far: ${allFills.length}`);
+      
+      // Report progress
+      if (onProgress) {
+        onProgress([...allFills], monthsLoaded);
+      }
+    } else {
+      consecutiveEmptyMonths++;
+      // Stop if 6 consecutive months with no trades
+      if (consecutiveEmptyMonths >= 6) {
+        console.log('No trades for 6 months, stopping fetch');
+        break;
+      }
+    }
+    
+    // Move to previous month
+    currentMonth--;
+    if (currentMonth < 0) {
+      currentMonth = 11;
+      currentYear--;
+    }
+  }
+  
+  // Sort by time descending
+  allFills.sort((a, b) => b.time - a.time);
+  console.log(`Full history fetch complete: ${allFills.length} total fills`);
+  
+  return allFills;
+}
+
 // Legacy function - fetch all fills (kept for compatibility but not recommended)
 export async function fetchUserFills(address: string): Promise<Fill[]> {
   return fetchInitialFills(address);

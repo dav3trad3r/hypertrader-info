@@ -17,7 +17,7 @@ const Index = () => {
     filteredData, 
     rawFills,
     isLoading,
-    isLoadingMonth,
+    isLoadingHistory,
     loadedMonths,
     error, 
     address, 
@@ -71,6 +71,11 @@ const Index = () => {
                   <p className="font-mono text-sm text-foreground truncate max-w-md">
                     {address}
                   </p>
+                  {isLoadingHistory && (
+                    <p className="text-xs text-primary mt-1 animate-pulse">
+                      Loading complete history... ({rawFills.length.toLocaleString()} trades)
+                    </p>
+                  )}
                 </div>
                 
                 <div className="flex items-center gap-2">
@@ -110,7 +115,7 @@ const Index = () => {
                       dailyPnL={displayData.dailyPnL} 
                       weeklyPnL={displayData.weeklyPnL}
                       fills={displayData.fills}
-                      isLoadingMonth={isLoadingMonth}
+                      isLoadingMonth={false}
                       loadedMonths={loadedMonths}
                       onLoadMonth={loadMonth}
                     />
