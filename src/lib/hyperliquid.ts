@@ -270,7 +270,7 @@ export interface FetchAllFillsResult {
 
 export async function fetchAllFills(
   address: string,
-  onProgress?: (fills: Fill[], monthsLoaded: number, limitReached: boolean) => void
+  onProgress?: (fills: Fill[], monthsLoaded: number, limitReached: boolean, currentMonth: string) => void
 ): Promise<FetchAllFillsResult> {
   const allFills: Fill[] = [];
   const seenTids = new Set<number>();
@@ -300,6 +300,7 @@ export async function fetchAllFills(
       break;
     }
     
+    const monthLabel = new Date(currentYear, currentMonth).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
     const monthFills = await fetchFillsForMonth(address, currentYear, currentMonth);
     monthsLoaded++;
     
@@ -321,7 +322,7 @@ export async function fetchAllFills(
       
       // Report progress
       if (onProgress) {
-        onProgress([...allFills], monthsLoaded, limitReached);
+        onProgress([...allFills], monthsLoaded, limitReached, monthLabel);
       }
       
       if (limitReached) break;

@@ -18,6 +18,7 @@ const Index = () => {
     rawFills,
     isLoading,
     isLoadingHistory,
+    loadingProgress,
     loadedMonths,
     error, 
     address, 
@@ -47,7 +48,7 @@ const Index = () => {
         </div>
 
         {/* Loading State */}
-        {isLoading && <LoadingSpinner />}
+        {isLoading && <LoadingSpinner progress={loadingProgress} />}
 
         {/* Error State */}
         {error && !isLoading && (
