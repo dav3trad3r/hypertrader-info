@@ -137,31 +137,31 @@ async function makeApiRequest(payload: object): Promise<Response> {
   });
 }
 
-// Fetch all user fills using pagination - NO LIMITS
+// Fetch all user fills using pagination - handles high-volume traders
 export async function fetchUserFills(address: string): Promise<Fill[]> {
   const allFills: Fill[] = [];
   const seenTids = new Set<number>();
   
-  // Get fills in batches - start from beginning of time
-  // Hyperliquid uses milliseconds timestamps
   const now = Date.now();
-  const startOfHistory = new Date('2022-01-01').getTime(); // Hyperliquid launch approx
+  const startOfHistory = new Date('2022-01-01').getTime();
   
-  // Use userFillsByTime with time windows - use smaller windows for better coverage
-  const windowSize = 14 * 24 * 60 * 60 * 1000; // 14 days in ms for better granularity
+  // Start with 7-day windows - will shrink if we hit the 2000 limit
+  let windowSize = 7 * 24 * 60 * 60 * 1000;
+  const minWindowSize = 12 * 60 * 60 * 1000; // 12 hours minimum
   let currentEnd = now;
-  let currentStart = currentEnd - windowSize;
   let consecutiveEmpty = 0;
-  const maxConsecutiveEmpty = 6; // Skip ~3 months of empty data before stopping
+  const maxConsecutiveEmpty = 12; // ~3 months of empty data at 7-day windows
   
   console.log(`Fetching fills for ${address} from ${new Date(startOfHistory).toISOString()} to now`);
   
   while (currentEnd > startOfHistory && consecutiveEmpty < maxConsecutiveEmpty) {
+    const currentStart = Math.max(currentEnd - windowSize, startOfHistory);
+    
     try {
       const response = await makeApiRequest({
         type: "userFillsByTime",
         user: address,
-        startTime: Math.max(currentStart, startOfHistory),
+        startTime: currentStart,
         endTime: currentEnd,
         aggregateByTime: true,
       });
@@ -182,32 +182,43 @@ export async function fetchUserFills(address: string): Promise<Fill[]> {
             newCount++;
           }
         }
+        
         if (newCount > 0) {
-          consecutiveEmpty = 0; // Reset counter when we find data
+          consecutiveEmpty = 0;
+          console.log(`Window ${new Date(currentStart).toISOString().split('T')[0]} to ${new Date(currentEnd).toISOString().split('T')[0]}: ${newCount} new fills (${allFills.length} total)`);
+          
+          // If we hit 2000, the API truncated - shrink window and retry same period
+          if (fills.length >= 2000 && windowSize > minWindowSize) {
+            windowSize = Math.max(windowSize / 2, minWindowSize);
+            console.log(`Hit API limit, shrinking window to ${Math.round(windowSize / (24 * 60 * 60 * 1000))} days`);
+            // Don't move currentEnd - we need to refetch with smaller window
+            continue;
+          }
         } else {
           consecutiveEmpty++;
         }
-        console.log(`Window ${new Date(currentStart).toISOString().split('T')[0]} to ${new Date(currentEnd).toISOString().split('T')[0]}: ${newCount} new fills (${allFills.length} total)`);
       } else {
         consecutiveEmpty++;
       }
       
       // Move window back
       currentEnd = currentStart;
-      currentStart = currentEnd - windowSize;
+      
+      // Gradually restore window size if we're not hitting limits
+      if (fills && fills.length < 1500 && windowSize < 7 * 24 * 60 * 60 * 1000) {
+        windowSize = Math.min(windowSize * 1.5, 7 * 24 * 60 * 60 * 1000);
+      }
       
     } catch (error) {
       console.error("Error fetching fills:", error);
-      // Continue to next window instead of breaking completely
-      currentEnd = currentStart;
-      currentStart = currentEnd - windowSize;
+      currentEnd = currentEnd - windowSize;
       consecutiveEmpty++;
     }
   }
   
-  console.log(`Finished fetching historical fills: ${allFills.length} total`);
+  console.log(`Finished fetching historical fills: ${allFills.length} total (back to ${new Date(currentEnd).toISOString().split('T')[0]})`);
   
-  // Also try the simple userFills endpoint for recent trades (as backup)
+  // Also fetch recent fills as backup
   try {
     const response = await makeApiRequest({
       type: "userFills",
@@ -225,16 +236,16 @@ export async function fetchUserFills(address: string): Promise<Fill[]> {
             newCount++;
           }
         }
-        console.log(`Recent fills endpoint: ${newCount} additional fills`);
+        if (newCount > 0) {
+          console.log(`Recent fills endpoint: ${newCount} additional fills`);
+        }
       }
     }
   } catch (error) {
     console.error("Error fetching recent fills:", error);
   }
   
-  // Sort by time descending
   allFills.sort((a, b) => b.time - a.time);
-  
   console.log(`Final fill count: ${allFills.length}`);
   
   return allFills;
