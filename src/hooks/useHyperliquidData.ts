@@ -1,6 +1,6 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useRef } from 'react';
 import { 
-  fetchInitialFills,
+  fetchAllFills,
   fetchFillsForMonth, 
   isValidAddress,
   filterFillsByMarket,
@@ -19,6 +19,7 @@ export interface UseHyperliquidDataReturn {
   filteredData: UserTradingData | null;
   rawFills: Fill[];
   isLoading: boolean;
+  isLoadingHistory: boolean;
   isLoadingMonth: boolean;
   loadedMonths: Set<string>;
   error: string | null;
@@ -38,11 +39,13 @@ function getMonthKey(year: number, month: number): string {
 export function useHyperliquidData(): UseHyperliquidDataReturn {
   const [rawFills, setRawFills] = useState<Fill[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isLoadingMonth, setIsLoadingMonth] = useState(false);
   const [loadedMonths, setLoadedMonths] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [address, setAddress] = useState('');
   const [marketType, setMarketType] = useState<MarketType>('all');
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Calculate market counts
   const marketCounts = useMemo(() => {
@@ -142,31 +145,47 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
       return;
     }
     
+    // Cancel any ongoing fetch
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
+    
     setIsLoading(true);
+    setIsLoadingHistory(true);
     setError(null);
     setAddress(trimmedAddress);
     setMarketType('all');
     setLoadedMonths(new Set());
+    setRawFills([]);
     
     try {
-      const fills = await fetchInitialFills(trimmedAddress);
-      
-      if (fills.length === 0) {
-        setError('No trading history found for this address');
-        setRawFills([]);
-      } else {
-        setRawFills(fills);
+      // Fetch ALL historical data for accurate summary
+      const allFills = await fetchAllFills(trimmedAddress, (progressFills, monthsLoaded) => {
+        // Update fills progressively as they load
+        setRawFills(progressFills);
         
-        // Mark current month and months with data as loaded
-        const now = new Date();
+        // Mark months with data as loaded
         const monthsWithData = new Set<string>();
-        monthsWithData.add(getMonthKey(now.getFullYear(), now.getMonth()));
-        
-        fills.forEach(fill => {
+        progressFills.forEach(fill => {
           const date = new Date(fill.time);
           monthsWithData.add(getMonthKey(date.getFullYear(), date.getMonth()));
         });
+        setLoadedMonths(monthsWithData);
+      });
+      
+      if (allFills.length === 0) {
+        setError('No trading history found for this address');
+        setRawFills([]);
+      } else {
+        setRawFills(allFills);
         
+        // Mark all months with data as loaded
+        const monthsWithData = new Set<string>();
+        allFills.forEach(fill => {
+          const date = new Date(fill.time);
+          monthsWithData.add(getMonthKey(date.getFullYear(), date.getMonth()));
+        });
         setLoadedMonths(monthsWithData);
       }
     } catch (err) {
@@ -175,15 +194,20 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
       setRawFills([]);
     } finally {
       setIsLoading(false);
+      setIsLoadingHistory(false);
     }
   }, []);
 
   const clearData = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
     setRawFills([]);
     setError(null);
     setAddress('');
     setMarketType('all');
     setLoadedMonths(new Set());
+    setIsLoadingHistory(false);
   }, []);
 
   return {
@@ -191,6 +215,7 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
     filteredData,
     rawFills,
     isLoading,
+    isLoadingHistory,
     isLoadingMonth,
     loadedMonths,
     error,
