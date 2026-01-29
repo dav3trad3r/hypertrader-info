@@ -115,7 +115,6 @@ const Index = () => {
                     <SummaryStats summary={displayData.summary} />
                     <LiveTrades 
                       address={address || ''}
-                      initialFills={displayData.fills}
                       marketType={marketType}
                     />
                   </div>
