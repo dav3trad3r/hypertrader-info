@@ -1,4 +1,4 @@
-import { Activity } from 'lucide-react';
+import { TrendingUp } from 'lucide-react';
 
 export function Header() {
   return (
@@ -7,13 +7,13 @@ export function Header() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-primary/10 glow-teal">
-              <Activity className="w-6 h-6 text-primary" />
+              <TrendingUp className="w-6 h-6 text-primary" />
             </div>
             <div>
               <h1 className="text-xl font-bold text-foreground">
-                Hyperliquid <span className="text-primary">PnL</span> Tracker
+                Hyper<span className="text-primary">Trader</span>
               </h1>
-              <p className="text-xs text-muted-foreground">Real-time trading performance calendar</p>
+              <p className="text-xs text-muted-foreground">Hyperliquid PnL Tracker & Analytics</p>
             </div>
           </div>
           
