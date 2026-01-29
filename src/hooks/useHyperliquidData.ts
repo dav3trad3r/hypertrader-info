@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useRef } from 'react';
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { 
   fetchAllFills,
   fetchFillsForMonth, 
@@ -13,6 +13,7 @@ import {
   type MarketType,
   type Fill,
 } from '@/lib/hyperliquid';
+import { toast } from '@/hooks/use-toast';
 
 export interface UseHyperliquidDataReturn {
   data: UserTradingData | null;
@@ -46,6 +47,36 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
   const [address, setAddress] = useState('');
   const [marketType, setMarketType] = useState<MarketType>('all');
   const abortControllerRef = useRef<AbortController | null>(null);
+  const loadingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const toastShownRef = useRef(false);
+
+  // Show toast after 5 seconds of loading
+  useEffect(() => {
+    if (isLoadingHistory && !toastShownRef.current) {
+      loadingTimerRef.current = setTimeout(() => {
+        toastShownRef.current = true;
+        toast({
+          title: "Loading complete trading history",
+          description: "High-volume accounts may have thousands of trades across many months. We're fetching all data to ensure accurate summary statistics.",
+          duration: 8000,
+        });
+      }, 5000);
+    }
+
+    if (!isLoadingHistory) {
+      if (loadingTimerRef.current) {
+        clearTimeout(loadingTimerRef.current);
+        loadingTimerRef.current = null;
+      }
+      toastShownRef.current = false;
+    }
+
+    return () => {
+      if (loadingTimerRef.current) {
+        clearTimeout(loadingTimerRef.current);
+      }
+    };
+  }, [isLoadingHistory]);
 
   // Calculate market counts
   const marketCounts = useMemo(() => {
