@@ -1,5 +1,5 @@
 import { useState, useEffect, memo } from 'react';
-import { Activity, ArrowUpRight, ArrowDownRight, Zap } from 'lucide-react';
+import { Activity, ArrowUpRight, ArrowDownRight, Zap, Coins } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface LiveTradesProps {
@@ -7,37 +7,54 @@ interface LiveTradesProps {
   marketType: 'all' | 'perps' | 'spot';
 }
 
-interface Position {
+interface PerpPosition {
+  type: 'perp';
   coin: string;
   szi: string;
   entryPx: string;
   positionValue: string;
   unrealizedPnl: string;
   returnOnEquity: string;
-  liquidationPx: string | null;
   leverage: {
     type: string;
     value: number;
   };
-  maxLeverage: number;
-  cumFunding: {
-    allTime: string;
-    sinceOpen: string;
-    sinceChange: string;
-  };
 }
+
+interface SpotPosition {
+  type: 'spot';
+  coin: string;
+  token: string;
+  hold: string;
+  total: string;
+  entryNtl: string;
+}
+
+type Position = PerpPosition | SpotPosition;
 
 interface ClearinghouseState {
   assetPositions: {
-    position: Position;
+    position: {
+      coin: string;
+      szi: string;
+      entryPx: string;
+      positionValue: string;
+      unrealizedPnl: string;
+      returnOnEquity: string;
+      leverage: { type: string; value: number };
+    };
     type: string;
   }[];
-  crossMarginSummary: {
-    accountValue: string;
-    totalMarginUsed: string;
-    totalNtlPos: string;
-    totalRawUsd: string;
-  };
+}
+
+interface SpotClearinghouseState {
+  balances: {
+    coin: string;
+    token: number;
+    hold: string;
+    total: string;
+    entryNtl: string;
+  }[];
 }
 
 const HYPERLIQUID_API = "https://api.hyperliquid.xyz/info";
@@ -62,11 +79,11 @@ function formatSize(value: number): string {
   return value.toFixed(4);
 }
 
-const PositionItem = memo(function PositionItem({ 
+const PerpPositionItem = memo(function PerpPositionItem({ 
   position,
   isNew
 }: { 
-  position: Position;
+  position: PerpPosition;
   isNew: boolean;
 }) {
   const size = parseFloat(position.szi);
@@ -142,8 +159,57 @@ const PositionItem = memo(function PositionItem({
   );
 });
 
+const SpotPositionItem = memo(function SpotPositionItem({ 
+  position,
+  isNew
+}: { 
+  position: SpotPosition;
+  isNew: boolean;
+}) {
+  const total = parseFloat(position.total);
+  const entryNtl = parseFloat(position.entryNtl);
+
+  return (
+    <div 
+      className={cn(
+        "flex items-center justify-between p-3 rounded-lg border transition-all duration-300",
+        isNew ? "bg-primary/10 border-primary/30 animate-pulse" : "bg-secondary/30 border-border/50",
+        "hover:bg-secondary/50"
+      )}
+    >
+      <div className="flex items-center gap-3">
+        <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-primary/20">
+          <Coins className="w-4 h-4 text-primary" />
+        </div>
+        
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="font-medium text-sm text-foreground">{position.coin}</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/20 text-primary">
+              SPOT
+            </span>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span className="font-mono">
+              {formatSize(total)} tokens
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div className="text-right">
+        <span className="font-mono text-sm text-foreground">
+          {formatCurrency(entryNtl)}
+        </span>
+        <p className="text-xs text-muted-foreground">entry value</p>
+      </div>
+    </div>
+  );
+});
+
 export function LiveTrades({ address, marketType }: LiveTradesProps) {
-  const [positions, setPositions] = useState<Position[]>([]);
+  const [perpPositions, setPerpPositions] = useState<PerpPosition[]>([]);
+  const [spotPositions, setSpotPositions] = useState<SpotPosition[]>([]);
   const [newCoins, setNewCoins] = useState<Set<string>>(new Set());
   const [isLive, setIsLive] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
@@ -153,38 +219,83 @@ export function LiveTrades({ address, marketType }: LiveTradesProps) {
 
     const fetchPositions = async () => {
       try {
-        const response = await fetch(HYPERLIQUID_API, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            type: "clearinghouseState",
-            user: address,
+        // Fetch both perp and spot positions in parallel
+        const [perpResponse, spotResponse] = await Promise.all([
+          fetch(HYPERLIQUID_API, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              type: "clearinghouseState",
+              user: address,
+            }),
           }),
+          fetch(HYPERLIQUID_API, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              type: "spotClearinghouseState",
+              user: address,
+            }),
+          }),
+        ]);
+
+        const allCurrentCoins = new Set([
+          ...perpPositions.map(p => p.coin),
+          ...spotPositions.map(p => p.coin),
+        ]);
+
+        // Process perp positions
+        if (perpResponse.ok) {
+          const perpData: ClearinghouseState = await perpResponse.json();
+          if (perpData?.assetPositions) {
+            const openPerps: PerpPosition[] = perpData.assetPositions
+              .filter(ap => parseFloat(ap.position.szi) !== 0)
+              .map(ap => ({
+                type: 'perp' as const,
+                coin: ap.position.coin,
+                szi: ap.position.szi,
+                entryPx: ap.position.entryPx,
+                positionValue: ap.position.positionValue,
+                unrealizedPnl: ap.position.unrealizedPnl,
+                returnOnEquity: ap.position.returnOnEquity,
+                leverage: ap.position.leverage,
+              }));
+            setPerpPositions(openPerps);
+          }
+        }
+
+        // Process spot positions
+        if (spotResponse.ok) {
+          const spotData: SpotClearinghouseState = await spotResponse.json();
+          if (spotData?.balances) {
+            const openSpots: SpotPosition[] = spotData.balances
+              .filter(b => parseFloat(b.total) > 0 && b.coin !== 'USDC') // Exclude USDC and zero balances
+              .map(b => ({
+                type: 'spot' as const,
+                coin: b.coin,
+                token: String(b.token),
+                hold: b.hold,
+                total: b.total,
+                entryNtl: b.entryNtl,
+              }));
+            setSpotPositions(openSpots);
+          }
+        }
+
+        // Check for new positions
+        const newPositionCoins: string[] = [];
+        perpPositions.forEach(p => {
+          if (!allCurrentCoins.has(p.coin)) newPositionCoins.push(p.coin);
+        });
+        spotPositions.forEach(p => {
+          if (!allCurrentCoins.has(p.coin)) newPositionCoins.push(p.coin);
         });
 
-        if (!response.ok) return;
-
-        const data: ClearinghouseState = await response.json();
-        
-        if (data?.assetPositions) {
-          const openPositions = data.assetPositions
-            .map(ap => ap.position)
-            .filter(p => parseFloat(p.szi) !== 0);
-          
-          // Check for new positions
-          const currentCoins = new Set(positions.map(p => p.coin));
-          const newPositionCoins = openPositions
-            .filter(p => !currentCoins.has(p.coin))
-            .map(p => p.coin);
-          
-          if (newPositionCoins.length > 0 && positions.length > 0) {
-            setNewCoins(new Set(newPositionCoins));
-            setTimeout(() => setNewCoins(new Set()), 2000);
-          }
-          
-          setPositions(openPositions);
+        if (newPositionCoins.length > 0 && allCurrentCoins.size > 0) {
+          setNewCoins(new Set(newPositionCoins));
+          setTimeout(() => setNewCoins(new Set()), 2000);
         }
-        
+
         setIsLoading(false);
       } catch (error) {
         console.error('Error fetching positions:', error);
@@ -198,11 +309,14 @@ export function LiveTrades({ address, marketType }: LiveTradesProps) {
     return () => clearInterval(intervalId);
   }, [address]);
 
-  // Filter positions by market type (perps only for now, spot positions would need different API)
-  const filteredPositions = positions.filter(p => {
-    if (marketType === 'spot') return false; // Spot positions use different structure
-    return true; // Perps and all show perp positions
-  });
+  // Filter positions by market type
+  const filteredPositions: Position[] = (() => {
+    if (marketType === 'perps') return perpPositions;
+    if (marketType === 'spot') return spotPositions;
+    return [...perpPositions, ...spotPositions];
+  })();
+
+  const totalCount = filteredPositions.length;
 
   return (
     <div className="bg-card border border-border rounded-lg p-4">
@@ -231,13 +345,21 @@ export function LiveTrades({ address, marketType }: LiveTradesProps) {
             <Activity className="w-8 h-8 mx-auto mb-2 opacity-50 animate-pulse" />
             <p className="text-sm">Loading positions...</p>
           </div>
-        ) : filteredPositions.length > 0 ? (
+        ) : totalCount > 0 ? (
           filteredPositions.map((position) => (
-            <PositionItem 
-              key={position.coin} 
-              position={position} 
-              isNew={newCoins.has(position.coin)}
-            />
+            position.type === 'perp' ? (
+              <PerpPositionItem 
+                key={`perp-${position.coin}`} 
+                position={position} 
+                isNew={newCoins.has(position.coin)}
+              />
+            ) : (
+              <SpotPositionItem 
+                key={`spot-${position.coin}`} 
+                position={position} 
+                isNew={newCoins.has(position.coin)}
+              />
+            )
           ))
         ) : (
           <div className="py-8 text-center text-muted-foreground">
@@ -248,10 +370,10 @@ export function LiveTrades({ address, marketType }: LiveTradesProps) {
         )}
       </div>
 
-      {filteredPositions.length > 0 && (
+      {totalCount > 0 && (
         <div className="mt-4 pt-3 border-t border-border text-center">
           <p className="text-xs text-muted-foreground">
-            {filteredPositions.length} open position{filteredPositions.length !== 1 ? 's' : ''} • Updates every 5s
+            {totalCount} open position{totalCount !== 1 ? 's' : ''} • Updates every 5s
           </p>
         </div>
       )}
