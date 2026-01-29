@@ -259,42 +259,35 @@ export async function fetchInitialFills(address: string): Promise<Fill[]> {
 }
 
 // Fetch recent fills only (fast initial load)
-// Uses userFills API which returns up to 2000 most recent trades
+// Fetches current month's fills using time-based API
 export interface FetchRecentFillsResult {
   fills: Fill[];
   hasMoreHistory: boolean;
 }
 
 export async function fetchRecentFills(address: string): Promise<FetchRecentFillsResult> {
-  const fills: Fill[] = [];
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth();
   
-  console.log('Fetching recent trades...');
+  console.log('Fetching current month trades...');
   
-  try {
-    const response = await makeApiRequest({
-      type: "userFills",
-      user: address,
-    });
-
-    if (response.ok) {
-      const recentFills: Fill[] = await response.json();
-      if (recentFills && recentFills.length > 0) {
-        console.log(`Found ${recentFills.length} recent trades`);
-        fills.push(...recentFills);
-      }
-    }
-  } catch (error) {
-    console.error("Error fetching recent fills:", error);
-    throw error;
-  }
+  // Fetch current month using time-based API (more accurate)
+  const fills = await fetchFillsForMonth(address, currentYear, currentMonth);
   
   // Sort by time descending
   fills.sort((a, b) => b.time - a.time);
   
-  // If we got exactly 2000 fills, there's likely more history
-  const hasMoreHistory = fills.length >= 2000;
+  // Check if there might be more history (if we have trades at the start of the month)
+  let hasMoreHistory = false;
+  if (fills.length > 0) {
+    const earliestFill = fills[fills.length - 1];
+    const monthStart = new Date(currentYear, currentMonth, 1).getTime();
+    // If earliest fill is close to month start, there's likely more history
+    hasMoreHistory = earliestFill.time <= monthStart + 24 * 60 * 60 * 1000; // within first day
+  }
   
-  console.log(`Initial load complete: ${fills.length} trades${hasMoreHistory ? ' (more history available)' : ''}`);
+  console.log(`Initial load complete: ${fills.length} trades for ${new Date(currentYear, currentMonth).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`);
   
   return {
     fills,
