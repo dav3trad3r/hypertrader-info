@@ -10,6 +10,7 @@ import { ErrorDisplay } from '@/components/ErrorDisplay';
 import { EmptyState } from '@/components/EmptyState';
 import { MarketFilter } from '@/components/MarketFilter';
 import { SharePnLCard } from '@/components/SharePnLCard';
+import { LiveTrades } from '@/components/LiveTrades';
 
 const Index = () => {
   const { 
@@ -109,9 +110,14 @@ const Index = () => {
                 />
               </div>
 
-                  {/* Summary Stats - Right column */}
+                  {/* Summary Stats & Live Trades - Right column */}
                   <div className="space-y-6">
                     <SummaryStats summary={displayData.summary} />
+                    <LiveTrades 
+                      address={address || ''}
+                      initialFills={displayData.fills}
+                      marketType={marketType}
+                    />
                   </div>
                 </div>
 
