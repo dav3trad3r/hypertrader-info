@@ -159,21 +159,21 @@ export function PnLCalendar({
   };
 
   return (
-    <div className="bg-card border border-border rounded-lg p-6">
+    <div className="bg-card border border-border rounded-lg p-3 sm:p-6">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h2 className="text-xl font-semibold text-foreground">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 sm:mb-6">
+        <div className="min-w-0">
+          <h2 className="text-lg sm:text-xl font-semibold text-foreground">
             {MONTHS[currentDate.getMonth()]} {currentDate.getFullYear()}
           </h2>
-          <div className="flex items-center gap-4 mt-1">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-4 mt-1">
             <span className={cn(
-              "text-lg font-mono font-semibold",
+              "text-base sm:text-lg font-mono font-semibold",
               monthlyTotal.total >= 0 ? "text-profit" : "text-loss"
             )}>
               {monthlyTotal.total >= 0 ? '+' : ''}${formatCurrency(monthlyTotal.total)}
             </span>
-            <span className="text-sm text-muted-foreground">
+            <span className="text-xs sm:text-sm text-muted-foreground">
               {monthlyTotal.trades} trades
             </span>
             {isLoadingMonth && (
@@ -190,7 +190,7 @@ export function PnLCalendar({
           </div>
         </div>
         
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <Button
             variant="outline"
             size="icon"
@@ -219,15 +219,17 @@ export function PnLCalendar({
       </div>
 
       {/* Calendar Grid */}
-      <div className="grid grid-cols-8 gap-1">
+      <div className="grid grid-cols-8 gap-0.5 sm:gap-1">
         {/* Day headers */}
         {DAYS.map(day => (
-          <div key={day} className="text-center text-xs text-muted-foreground py-2 font-medium">
-            {day}
+          <div key={day} className="text-center text-[10px] sm:text-xs text-muted-foreground py-1 sm:py-2 font-medium">
+            <span className="hidden sm:inline">{day}</span>
+            <span className="sm:hidden">{day.charAt(0)}</span>
           </div>
         ))}
-        <div className="text-center text-xs text-muted-foreground py-2 font-medium">
-          Week
+        <div className="text-center text-[10px] sm:text-xs text-muted-foreground py-1 sm:py-2 font-medium">
+          <span className="hidden sm:inline">Week</span>
+          <span className="sm:hidden">W</span>
         </div>
 
         {/* Calendar cells */}
@@ -254,33 +256,33 @@ export function PnLCalendar({
                   key={day.date}
                   onClick={() => handleDayClick(day)}
                   className={cn(
-                    "aspect-square rounded-md p-1.5 flex flex-col justify-between transition-all duration-200 relative",
+                    "aspect-square rounded-sm sm:rounded-md p-0.5 sm:p-1.5 flex flex-col justify-between transition-all duration-200 relative overflow-hidden",
                     hasData && "cursor-pointer",
                     hasData && isProfitable && "bg-profit-muted hover:bg-profit/30",
                     hasData && isLoss && "bg-loss-muted hover:bg-loss/30",
                     !hasData && "bg-secondary/50",
-                    isToday && "ring-2 ring-primary ring-offset-1 ring-offset-background",
-                    isSelected && isProfitable && "ring-2 ring-profit glow-profit",
-                    isSelected && isLoss && "ring-2 ring-loss glow-loss",
+                    isToday && "ring-1 sm:ring-2 ring-primary ring-offset-1 ring-offset-background",
+                    isSelected && isProfitable && "ring-1 sm:ring-2 ring-profit glow-profit",
+                    isSelected && isLoss && "ring-1 sm:ring-2 ring-loss glow-loss",
                     hoveredDay?.date === day.date && !isSelected && hasData && isProfitable && "glow-profit",
                     hoveredDay?.date === day.date && !isSelected && hasData && isLoss && "glow-loss"
                   )}
                   onMouseEnter={() => hasData && setHoveredDay(day)}
                   onMouseLeave={() => setHoveredDay(null)}
                 >
-                  <span className="text-xs text-muted-foreground">
+                  <span className="text-[8px] sm:text-xs text-muted-foreground leading-none">
                     {parseInt(day.date.split('-')[2])}
                   </span>
                   
                   {hasData && (
                     <div className="text-right">
                       <span className={cn(
-                        "text-xs font-mono font-semibold block",
+                        "text-[8px] sm:text-xs font-mono font-semibold block leading-none",
                         isProfitable ? "text-profit" : "text-loss"
                       )}>
                         {isProfitable ? '+' : ''}{formatCurrency(day.pnl)}
                       </span>
-                      <span className="text-[10px] text-muted-foreground">
+                      <span className="text-[7px] sm:text-[10px] text-muted-foreground hidden sm:inline">
                         {day.trades}t
                       </span>
                     </div>
@@ -330,13 +332,13 @@ export function PnLCalendar({
             
             {/* Weekly total */}
             <div className={cn(
-              "aspect-square rounded-md p-1.5 flex flex-col justify-center items-center",
+              "aspect-square rounded-sm sm:rounded-md p-0.5 sm:p-1.5 flex flex-col justify-center items-center",
               getWeekTotal(weekIndex) > 0 && "bg-profit/10",
               getWeekTotal(weekIndex) < 0 && "bg-loss/10",
               getWeekTotal(weekIndex) === 0 && "bg-secondary/30"
             )}>
               <span className={cn(
-                "text-xs font-mono font-semibold",
+                "text-[8px] sm:text-xs font-mono font-semibold leading-none",
                 getWeekTotal(weekIndex) > 0 ? "text-profit" : 
                 getWeekTotal(weekIndex) < 0 ? "text-loss" : "text-muted-foreground"
               )}>
@@ -349,22 +351,22 @@ export function PnLCalendar({
       </div>
 
       {/* Legend */}
-      <div className="flex items-center justify-center gap-6 mt-6 pt-4 border-t border-border">
-        <div className="flex items-center gap-2">
-          <div className="w-3 h-3 rounded-sm bg-profit-muted" />
-          <span className="text-xs text-muted-foreground">Profitable</span>
+      <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-6 mt-4 sm:mt-6 pt-3 sm:pt-4 border-t border-border">
+        <div className="flex items-center gap-1 sm:gap-2">
+          <div className="w-2 h-2 sm:w-3 sm:h-3 rounded-sm bg-profit-muted" />
+          <span className="text-[10px] sm:text-xs text-muted-foreground">Profitable</span>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="w-3 h-3 rounded-sm bg-loss-muted" />
-          <span className="text-xs text-muted-foreground">Loss</span>
+        <div className="flex items-center gap-1 sm:gap-2">
+          <div className="w-2 h-2 sm:w-3 sm:h-3 rounded-sm bg-loss-muted" />
+          <span className="text-[10px] sm:text-xs text-muted-foreground">Loss</span>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="w-3 h-3 rounded-sm bg-secondary/50" />
-          <span className="text-xs text-muted-foreground">No Trades</span>
+        <div className="flex items-center gap-1 sm:gap-2">
+          <div className="w-2 h-2 sm:w-3 sm:h-3 rounded-sm bg-secondary/50" />
+          <span className="text-[10px] sm:text-xs text-muted-foreground">No Trades</span>
         </div>
         {selectedDate && (
-          <span className="text-xs text-primary ml-4">
-            Click day again to close breakdown
+          <span className="text-[10px] sm:text-xs text-primary">
+            Tap to close
           </span>
         )}
       </div>
