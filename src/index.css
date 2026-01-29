@@ -4,118 +4,121 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Design System: Hyperliquid PnL Calendar - Dark Trading Terminal Theme */
+/* Design System: Hyperliquid PnL Calendar - Matching Hyperliquid's Dark Theme */
 
 @layer base {
   :root {
-    --background: 222 47% 6%;
-    --foreground: 210 40% 96%;
+    /* Hyperliquid-inspired dark theme */
+    --background: 220 20% 4%;
+    --foreground: 0 0% 95%;
 
-    --card: 222 47% 8%;
-    --card-foreground: 210 40% 96%;
+    --card: 220 20% 7%;
+    --card-foreground: 0 0% 95%;
 
-    --popover: 222 47% 10%;
-    --popover-foreground: 210 40% 96%;
+    --popover: 220 20% 9%;
+    --popover-foreground: 0 0% 95%;
 
-    --primary: 172 66% 50%;
-    --primary-foreground: 222 47% 6%;
+    /* Hyperliquid's signature neon green */
+    --primary: 120 100% 50%;
+    --primary-foreground: 220 20% 4%;
 
-    --secondary: 222 47% 14%;
-    --secondary-foreground: 210 40% 96%;
+    --secondary: 220 20% 12%;
+    --secondary-foreground: 0 0% 95%;
 
-    --muted: 222 30% 16%;
-    --muted-foreground: 215 20% 55%;
+    --muted: 220 15% 15%;
+    --muted-foreground: 220 10% 55%;
 
-    --accent: 172 66% 50%;
-    --accent-foreground: 222 47% 6%;
+    --accent: 120 100% 50%;
+    --accent-foreground: 220 20% 4%;
 
     --destructive: 0 72% 51%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive-foreground: 0 0% 98%;
 
-    /* Trading-specific colors */
-    --profit: 142 76% 46%;
-    --profit-foreground: 142 76% 96%;
-    --profit-muted: 142 40% 18%;
+    /* Trading-specific colors - Hyperliquid style */
+    --profit: 120 100% 50%;
+    --profit-foreground: 120 100% 95%;
+    --profit-muted: 120 50% 12%;
     
-    --loss: 0 72% 51%;
-    --loss-foreground: 0 72% 96%;
-    --loss-muted: 0 40% 16%;
+    --loss: 0 85% 55%;
+    --loss-foreground: 0 85% 95%;
+    --loss-muted: 0 50% 12%;
 
-    --neutral: 220 13% 46%;
-    --neutral-foreground: 220 13% 96%;
+    --neutral: 220 10% 50%;
+    --neutral-foreground: 220 10% 95%;
 
-    --cyan-glow: 172 66% 50%;
+    --hl-green: 120 100% 50%;
+    --hl-green-dim: 120 60% 35%;
 
-    --border: 222 30% 18%;
-    --input: 222 30% 14%;
-    --ring: 172 66% 50%;
+    --border: 220 15% 15%;
+    --input: 220 15% 12%;
+    --ring: 120 100% 50%;
 
-    --radius: 0.75rem;
+    --radius: 0.5rem;
 
-    /* Font families */
     --font-mono: 'JetBrains Mono', monospace;
     --font-sans: 'Inter', system-ui, sans-serif;
 
-    --sidebar-background: 222 47% 6%;
-    --sidebar-foreground: 210 40% 96%;
-    --sidebar-primary: 172 66% 50%;
-    --sidebar-primary-foreground: 222 47% 6%;
-    --sidebar-accent: 222 47% 12%;
-    --sidebar-accent-foreground: 210 40% 96%;
-    --sidebar-border: 222 30% 18%;
-    --sidebar-ring: 172 66% 50%;
+    --sidebar-background: 220 20% 4%;
+    --sidebar-foreground: 0 0% 95%;
+    --sidebar-primary: 120 100% 50%;
+    --sidebar-primary-foreground: 220 20% 4%;
+    --sidebar-accent: 220 20% 10%;
+    --sidebar-accent-foreground: 0 0% 95%;
+    --sidebar-border: 220 15% 15%;
+    --sidebar-ring: 120 100% 50%;
   }
 
   .dark {
-    --background: 222 47% 6%;
-    --foreground: 210 40% 96%;
+    --background: 220 20% 4%;
+    --foreground: 0 0% 95%;
 
-    --card: 222 47% 8%;
-    --card-foreground: 210 40% 96%;
+    --card: 220 20% 7%;
+    --card-foreground: 0 0% 95%;
 
-    --popover: 222 47% 10%;
-    --popover-foreground: 210 40% 96%;
+    --popover: 220 20% 9%;
+    --popover-foreground: 0 0% 95%;
 
-    --primary: 172 66% 50%;
-    --primary-foreground: 222 47% 6%;
+    --primary: 120 100% 50%;
+    --primary-foreground: 220 20% 4%;
 
-    --secondary: 222 47% 14%;
-    --secondary-foreground: 210 40% 96%;
+    --secondary: 220 20% 12%;
+    --secondary-foreground: 0 0% 95%;
 
-    --muted: 222 30% 16%;
-    --muted-foreground: 215 20% 55%;
+    --muted: 220 15% 15%;
+    --muted-foreground: 220 10% 55%;
 
-    --accent: 172 66% 50%;
-    --accent-foreground: 222 47% 6%;
+    --accent: 120 100% 50%;
+    --accent-foreground: 220 20% 4%;
 
     --destructive: 0 72% 51%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive-foreground: 0 0% 98%;
 
-    --profit: 142 76% 46%;
-    --profit-foreground: 142 76% 96%;
-    --profit-muted: 142 40% 18%;
+    --profit: 120 100% 50%;
+    --profit-foreground: 120 100% 95%;
+    --profit-muted: 120 50% 12%;
     
-    --loss: 0 72% 51%;
-    --loss-foreground: 0 72% 96%;
-    --loss-muted: 0 40% 16%;
+    --loss: 0 85% 55%;
+    --loss-foreground: 0 85% 95%;
+    --loss-muted: 0 50% 12%;
 
-    --neutral: 220 13% 46%;
-    --neutral-foreground: 220 13% 96%;
+    --neutral: 220 10% 50%;
+    --neutral-foreground: 220 10% 95%;
 
-    --cyan-glow: 172 66% 50%;
+    --hl-green: 120 100% 50%;
+    --hl-green-dim: 120 60% 35%;
 
-    --border: 222 30% 18%;
-    --input: 222 30% 14%;
-    --ring: 172 66% 50%;
+    --border: 220 15% 15%;
+    --input: 220 15% 12%;
+    --ring: 120 100% 50%;
 
-    --sidebar-background: 222 47% 6%;
-    --sidebar-foreground: 210 40% 96%;
-    --sidebar-primary: 172 66% 50%;
-    --sidebar-primary-foreground: 222 47% 6%;
-    --sidebar-accent: 222 47% 12%;
-    --sidebar-accent-foreground: 210 40% 96%;
-    --sidebar-border: 222 30% 18%;
-    --sidebar-ring: 172 66% 50%;
+    --sidebar-background: 220 20% 4%;
+    --sidebar-foreground: 0 0% 95%;
+    --sidebar-primary: 120 100% 50%;
+    --sidebar-primary-foreground: 220 20% 4%;
+    --sidebar-accent: 220 20% 10%;
+    --sidebar-accent-foreground: 0 0% 95%;
+    --sidebar-border: 220 15% 15%;
+    --sidebar-ring: 120 100% 50%;
   }
 }
 
@@ -131,8 +134,8 @@
 
   /* Custom scrollbar for trading terminal feel */
   ::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
   }
 
   ::-webkit-scrollbar-track {
@@ -141,7 +144,7 @@
 
   ::-webkit-scrollbar-thumb {
     background: hsl(var(--muted));
-    border-radius: 4px;
+    border-radius: 3px;
   }
 
   ::-webkit-scrollbar-thumb:hover {
@@ -178,8 +181,8 @@
     background-color: hsl(var(--loss-muted));
   }
 
-  .glow-cyan {
-    box-shadow: 0 0 20px hsl(var(--cyan-glow) / 0.3);
+  .glow-green {
+    box-shadow: 0 0 20px hsl(var(--hl-green) / 0.3);
   }
 
   .glow-profit {
@@ -193,8 +196,8 @@
   /* Grid lines effect */
   .grid-bg {
     background-image: 
-      linear-gradient(to right, hsl(var(--border) / 0.3) 1px, transparent 1px),
-      linear-gradient(to bottom, hsl(var(--border) / 0.3) 1px, transparent 1px);
+      linear-gradient(to right, hsl(var(--border) / 0.2) 1px, transparent 1px),
+      linear-gradient(to bottom, hsl(var(--border) / 0.2) 1px, transparent 1px);
     background-size: 40px 40px;
   }
 
@@ -239,5 +242,56 @@
 
   .pulse-glow {
     animation: pulse-glow 2s ease-in-out infinite;
+  }
+
+  /* Slide down animation for drawer */
+  @keyframes slide-down {
+    from {
+      opacity: 0;
+      max-height: 0;
+      transform: translateY(-10px);
+    }
+    to {
+      opacity: 1;
+      max-height: 1000px;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes slide-up {
+    from {
+      opacity: 1;
+      max-height: 1000px;
+      transform: translateY(0);
+    }
+    to {
+      opacity: 0;
+      max-height: 0;
+      transform: translateY(-10px);
+    }
+  }
+
+  .animate-slide-down {
+    animation: slide-down 0.3s ease-out forwards;
+  }
+
+  .animate-slide-up {
+    animation: slide-up 0.2s ease-out forwards;
+  }
+
+  /* Row stagger animation */
+  @keyframes row-fade-in {
+    from {
+      opacity: 0;
+      transform: translateX(-10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  .animate-row-in {
+    animation: row-fade-in 0.2s ease-out forwards;
   }
 }
