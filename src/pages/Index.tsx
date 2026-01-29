@@ -102,23 +102,25 @@ const Index = () => {
               <>
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                   {/* Calendar - Takes 2 columns */}
-              <div className="lg:col-span-2">
-                <PnLCalendar 
-                  dailyPnL={displayData.dailyPnL} 
-                  weeklyPnL={displayData.weeklyPnL}
-                  fills={displayData.fills}
-                />
-              </div>
-
-                  {/* Summary Stats & Live Trades - Right column */}
-                  <div className="space-y-6">
-                    <SummaryStats summary={displayData.summary} />
-                    <LiveTrades 
-                      address={address || ''}
-                      marketType={marketType}
+                  <div className="lg:col-span-2">
+                    <PnLCalendar 
+                      dailyPnL={displayData.dailyPnL} 
+                      weeklyPnL={displayData.weeklyPnL}
+                      fills={displayData.fills}
                     />
                   </div>
+
+                  {/* Summary Stats - Right column */}
+                  <div>
+                    <SummaryStats summary={displayData.summary} />
+                  </div>
                 </div>
+
+                {/* Live Positions - Full width below calendar */}
+                <LiveTrades 
+                  address={address || ''}
+                  marketType={marketType}
+                />
 
                 {/* Bottom Section */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
