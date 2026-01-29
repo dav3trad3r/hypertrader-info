@@ -8,117 +8,117 @@
 
 @layer base {
   :root {
-    /* Hyperliquid-inspired dark theme */
-    --background: 220 20% 4%;
+    /* Hyperliquid dark theme - dark slate background with teal accent */
+    --background: 210 22% 10%;
     --foreground: 0 0% 95%;
 
-    --card: 220 20% 7%;
+    --card: 210 22% 12%;
     --card-foreground: 0 0% 95%;
 
-    --popover: 220 20% 9%;
+    --popover: 210 22% 14%;
     --popover-foreground: 0 0% 95%;
 
-    /* Hyperliquid's signature neon green */
-    --primary: 120 100% 50%;
-    --primary-foreground: 220 20% 4%;
+    /* Hyperliquid's signature teal/cyan */
+    --primary: 168 53% 56%;
+    --primary-foreground: 210 22% 10%;
 
-    --secondary: 220 20% 12%;
+    --secondary: 210 20% 16%;
     --secondary-foreground: 0 0% 95%;
 
-    --muted: 220 15% 15%;
-    --muted-foreground: 220 10% 55%;
+    --muted: 210 18% 18%;
+    --muted-foreground: 210 10% 55%;
 
-    --accent: 120 100% 50%;
-    --accent-foreground: 220 20% 4%;
+    --accent: 168 53% 56%;
+    --accent-foreground: 210 22% 10%;
 
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 98%;
 
     /* Trading-specific colors - Hyperliquid style */
-    --profit: 120 100% 50%;
-    --profit-foreground: 120 100% 95%;
-    --profit-muted: 120 50% 12%;
+    --profit: 168 53% 56%;
+    --profit-foreground: 168 53% 95%;
+    --profit-muted: 168 40% 15%;
     
-    --loss: 0 85% 55%;
-    --loss-foreground: 0 85% 95%;
-    --loss-muted: 0 50% 12%;
+    --loss: 0 72% 55%;
+    --loss-foreground: 0 72% 95%;
+    --loss-muted: 0 40% 15%;
 
-    --neutral: 220 10% 50%;
-    --neutral-foreground: 220 10% 95%;
+    --neutral: 210 10% 50%;
+    --neutral-foreground: 210 10% 95%;
 
-    --hl-green: 120 100% 50%;
-    --hl-green-dim: 120 60% 35%;
+    --hl-teal: 168 53% 56%;
+    --hl-teal-dim: 168 40% 35%;
 
-    --border: 220 15% 15%;
-    --input: 220 15% 12%;
-    --ring: 120 100% 50%;
+    --border: 210 18% 18%;
+    --input: 210 18% 14%;
+    --ring: 168 53% 56%;
 
     --radius: 0.5rem;
 
     --font-mono: 'JetBrains Mono', monospace;
     --font-sans: 'Inter', system-ui, sans-serif;
 
-    --sidebar-background: 220 20% 4%;
+    --sidebar-background: 210 22% 10%;
     --sidebar-foreground: 0 0% 95%;
-    --sidebar-primary: 120 100% 50%;
-    --sidebar-primary-foreground: 220 20% 4%;
-    --sidebar-accent: 220 20% 10%;
+    --sidebar-primary: 168 53% 56%;
+    --sidebar-primary-foreground: 210 22% 10%;
+    --sidebar-accent: 210 20% 14%;
     --sidebar-accent-foreground: 0 0% 95%;
-    --sidebar-border: 220 15% 15%;
-    --sidebar-ring: 120 100% 50%;
+    --sidebar-border: 210 18% 18%;
+    --sidebar-ring: 168 53% 56%;
   }
 
   .dark {
-    --background: 220 20% 4%;
+    --background: 210 22% 10%;
     --foreground: 0 0% 95%;
 
-    --card: 220 20% 7%;
+    --card: 210 22% 12%;
     --card-foreground: 0 0% 95%;
 
-    --popover: 220 20% 9%;
+    --popover: 210 22% 14%;
     --popover-foreground: 0 0% 95%;
 
-    --primary: 120 100% 50%;
-    --primary-foreground: 220 20% 4%;
+    --primary: 168 53% 56%;
+    --primary-foreground: 210 22% 10%;
 
-    --secondary: 220 20% 12%;
+    --secondary: 210 20% 16%;
     --secondary-foreground: 0 0% 95%;
 
-    --muted: 220 15% 15%;
-    --muted-foreground: 220 10% 55%;
+    --muted: 210 18% 18%;
+    --muted-foreground: 210 10% 55%;
 
-    --accent: 120 100% 50%;
-    --accent-foreground: 220 20% 4%;
+    --accent: 168 53% 56%;
+    --accent-foreground: 210 22% 10%;
 
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 98%;
 
-    --profit: 120 100% 50%;
-    --profit-foreground: 120 100% 95%;
-    --profit-muted: 120 50% 12%;
+    --profit: 168 53% 56%;
+    --profit-foreground: 168 53% 95%;
+    --profit-muted: 168 40% 15%;
     
-    --loss: 0 85% 55%;
-    --loss-foreground: 0 85% 95%;
-    --loss-muted: 0 50% 12%;
+    --loss: 0 72% 55%;
+    --loss-foreground: 0 72% 95%;
+    --loss-muted: 0 40% 15%;
 
-    --neutral: 220 10% 50%;
-    --neutral-foreground: 220 10% 95%;
+    --neutral: 210 10% 50%;
+    --neutral-foreground: 210 10% 95%;
 
-    --hl-green: 120 100% 50%;
-    --hl-green-dim: 120 60% 35%;
+    --hl-teal: 168 53% 56%;
+    --hl-teal-dim: 168 40% 35%;
 
-    --border: 220 15% 15%;
-    --input: 220 15% 12%;
-    --ring: 120 100% 50%;
+    --border: 210 18% 18%;
+    --input: 210 18% 14%;
+    --ring: 168 53% 56%;
 
-    --sidebar-background: 220 20% 4%;
+    --sidebar-background: 210 22% 10%;
     --sidebar-foreground: 0 0% 95%;
-    --sidebar-primary: 120 100% 50%;
-    --sidebar-primary-foreground: 220 20% 4%;
-    --sidebar-accent: 220 20% 10%;
+    --sidebar-primary: 168 53% 56%;
+    --sidebar-primary-foreground: 210 22% 10%;
+    --sidebar-accent: 210 20% 14%;
     --sidebar-accent-foreground: 0 0% 95%;
-    --sidebar-border: 220 15% 15%;
-    --sidebar-ring: 120 100% 50%;
+    --sidebar-border: 210 18% 18%;
+    --sidebar-ring: 168 53% 56%;
   }
 }
 
@@ -181,8 +181,8 @@
     background-color: hsl(var(--loss-muted));
   }
 
-  .glow-green {
-    box-shadow: 0 0 20px hsl(var(--hl-green) / 0.3);
+  .glow-teal {
+    box-shadow: 0 0 20px hsl(var(--hl-teal) / 0.3);
   }
 
   .glow-profit {
