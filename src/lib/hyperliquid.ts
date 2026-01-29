@@ -141,6 +141,13 @@ async function makeApiRequest(payload: object): Promise<Response> {
 const FILLS_PER_REQUEST = 2000;
 const MAX_ACCESSIBLE_FILLS = 10000; // Hyperliquid only allows access to most recent 10K fills
 
+function getFillTime(fill: Partial<Fill> & Record<string, unknown>): number | null {
+  // Defensive parsing in case API changes types
+  const raw = (fill as any)?.time;
+  const t = typeof raw === 'number' ? raw : Number(raw);
+  return Number.isFinite(t) ? t : null;
+}
+
 export interface FetchFillsResult {
   fills: Fill[];
   hitApiLimit: boolean;
@@ -153,12 +160,16 @@ export async function fetchAllAvailableFills(address: string): Promise<FetchFill
   const allFills: Fill[] = [];
   const seenTids = new Set<number>();
   
-  // Start from now and paginate backwards
-  let currentEnd = Date.now();
+  // userFillsByTime returns the EARLIEST fills in [startTime, endTime] (capped at 2000).
+  // So to paginate, we move startTime FORWARD using the latest fill time we got.
+  const fixedEndTime = Date.now();
+  let currentStart = 0;
   let requestCount = 0;
-  const maxRequests = 50; // Safety limit (50 * 2000 = 100K theoretical max, but API caps at 10K)
+  // Safety limit: 10k/2k=5 pages, keep some headroom for timestamp-collision edge cases.
+  const maxRequests = 20;
   let hitApiLimit = false;
-  let consecutiveEmptyRequests = 0;
+  let lastCursorStart = currentStart;
+  let lastTotal = 0;
   
   console.log(`Fetching all available fills for ${address}...`);
   
@@ -166,13 +177,11 @@ export async function fetchAllAvailableFills(address: string): Promise<FetchFill
     requestCount++;
     
     try {
-      // Always query from very beginning of time to current end point
-      // This ensures we get the most recent fills before our cursor
       const response = await makeApiRequest({
         type: "userFillsByTime",
         user: address,
-        startTime: 0, // Beginning of time
-        endTime: currentEnd,
+        startTime: currentStart,
+        endTime: fixedEndTime,
         aggregateByTime: true,
       });
 
@@ -183,17 +192,12 @@ export async function fetchAllAvailableFills(address: string): Promise<FetchFill
       const fills: Fill[] = await response.json();
       
       if (!fills || fills.length === 0) {
-        consecutiveEmptyRequests++;
-        if (consecutiveEmptyRequests >= 2) {
-          console.log(`No more fills available after ${requestCount} requests`);
-          break;
-        }
-        continue;
+        console.log(`No more fills available after ${requestCount} requests`);
+        break;
       }
-      
-      consecutiveEmptyRequests = 0;
+
       let newCount = 0;
-      let earliestTime = currentEnd;
+      let maxTime = currentStart;
       
       for (const fill of fills) {
         if (!seenTids.has(fill.tid)) {
@@ -201,43 +205,45 @@ export async function fetchAllAvailableFills(address: string): Promise<FetchFill
           allFills.push(fill);
           newCount++;
         }
-        if (fill.time < earliestTime) {
-          earliestTime = fill.time;
+
+        const t = getFillTime(fill as any);
+        if (t !== null && t > maxTime) {
+          maxTime = t;
         }
       }
+
+      console.log(
+        `Request ${requestCount}: Got ${fills.length} fills, ${newCount} new (total: ${allFills.length}), cursorStart: ${new Date(currentStart).toISOString()}, pageMaxTime: ${new Date(maxTime).toISOString()}`
+      );
       
-      console.log(`Request ${requestCount}: Got ${fills.length} fills, ${newCount} new (total: ${allFills.length}), range: ${new Date(earliestTime).toISOString()} to ${new Date(currentEnd).toISOString()}`);
-      
-      // If we got less than 2000, we've fetched everything available
+      // If we got less than 2000, we've fetched everything available in this range
       if (fills.length < FILLS_PER_REQUEST) {
         console.log(`Received ${fills.length} < ${FILLS_PER_REQUEST}, all available data fetched`);
         break;
       }
-      
-      // We hit the 2000 limit - continue from the earliest fill time
-      // Subtract 1ms to avoid duplicates
-      const newEnd = earliestTime - 1;
-      
-      // Safety check: if we're not making progress, break
-      if (newEnd >= currentEnd) {
-        console.warn('Pagination not making progress, breaking');
+
+      // We hit the 2000 limit - advance startTime forward.
+      // Use maxTime (not maxTime+1) to avoid skipping fills that share the same millisecond.
+      if (maxTime === currentStart) {
+        // If we didn't advance by time, bump by 1ms to avoid an infinite loop.
+        currentStart = currentStart + 1;
+      } else {
+        currentStart = maxTime;
+      }
+
+      // Safety: detect lack of progress
+      if (currentStart === lastCursorStart && allFills.length === lastTotal) {
+        console.warn('Pagination made no progress, stopping');
         break;
       }
-      
-      currentEnd = newEnd;
+      lastCursorStart = currentStart;
+      lastTotal = allFills.length;
       
       // Check if we've hit the 10K API limit
       if (allFills.length >= MAX_ACCESSIBLE_FILLS) {
         hitApiLimit = true;
         console.log(`Hit the ${MAX_ACCESSIBLE_FILLS} fill API limit`);
         break;
-      }
-      
-      // Also check if we got exactly 2000 fills 5 times in a row and total is ~10K
-      // This suggests we're hitting the invisible API cap
-      if (allFills.length >= MAX_ACCESSIBLE_FILLS - FILLS_PER_REQUEST && fills.length === FILLS_PER_REQUEST) {
-        // Do one more request to confirm we're at the limit
-        continue;
       }
       
     } catch (error) {
@@ -276,22 +282,23 @@ export async function fetchFillsForMonth(
   const startOfMonth = new Date(year, month, 1).getTime();
   const endOfMonth = new Date(year, month + 1, 0, 23, 59, 59, 999).getTime();
   
-  let currentEnd = endOfMonth;
+  // Same pagination behavior as fetchAllAvailableFills: move startTime forward.
+  let currentStart = startOfMonth;
   let requestCount = 0;
   const maxRequests = 50; // Safety limit per month
   
   console.log(`Fetching fills for ${year}-${String(month + 1).padStart(2, '0')} (${new Date(startOfMonth).toISOString()} to ${new Date(endOfMonth).toISOString()})`);
   
-  // Use cursor-based pagination: always move backwards from the earliest fill
-  while (currentEnd > startOfMonth && requestCount < maxRequests) {
+  // Use cursor-based pagination: move startTime forward using the latest fill time.
+  while (currentStart < endOfMonth && requestCount < maxRequests) {
     requestCount++;
     
     try {
       const response = await makeApiRequest({
         type: "userFillsByTime",
         user: address,
-        startTime: startOfMonth,
-        endTime: currentEnd,
+        startTime: currentStart,
+        endTime: endOfMonth,
         aggregateByTime: true,
       });
 
@@ -302,12 +309,12 @@ export async function fetchFillsForMonth(
       const fills: Fill[] = await response.json();
       
       if (!fills || fills.length === 0) {
-        console.log(`Request ${requestCount}: No fills found before ${new Date(currentEnd).toISOString()}`);
+        console.log(`Request ${requestCount}: No fills found after ${new Date(currentStart).toISOString()}`);
         break;
       }
       
       let newCount = 0;
-      let earliestTime = currentEnd;
+      let maxTime = currentStart;
       
       for (const fill of fills) {
         if (!seenTids.has(fill.tid)) {
@@ -315,25 +322,25 @@ export async function fetchFillsForMonth(
           allFills.push(fill);
           newCount++;
         }
-        if (fill.time < earliestTime) {
-          earliestTime = fill.time;
+
+        const t = getFillTime(fill as any);
+        if (t !== null && t > maxTime) {
+          maxTime = t;
         }
       }
       
-      console.log(`Request ${requestCount}: Got ${fills.length} fills, ${newCount} new (total: ${allFills.length}), earliest: ${new Date(earliestTime).toISOString()}`);
+      console.log(`Request ${requestCount}: Got ${fills.length} fills, ${newCount} new (total: ${allFills.length}), pageMaxTime: ${new Date(maxTime).toISOString()}`);
       
       // If we got less than 2000, we've fetched everything in this range
       if (fills.length < FILLS_PER_REQUEST) {
         break;
       }
       
-      // We hit the 2000 limit - continue from the earliest fill time
-      currentEnd = earliestTime - 1;
-      
-      // Safety check: if we're not making progress, break
-      if (currentEnd >= endOfMonth) {
-        console.warn('Pagination not making progress, breaking');
-        break;
+      // We hit the 2000 limit - advance startTime forward.
+      if (maxTime === currentStart) {
+        currentStart = currentStart + 1;
+      } else {
+        currentStart = maxTime;
       }
       
     } catch (error) {
