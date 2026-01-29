@@ -76,7 +76,10 @@ export function AddressSearch({
       </div>
       
       <p className="text-center text-xs text-muted-foreground mt-3">
-        Enter any Hyperliquid wallet address to view their complete trading history
+        Enter any Hyperliquid wallet address to view trading history
+        <span className="block mt-1 text-muted-foreground/70">
+          Note: Hyperliquid's API limits access to the most recent ~10,000 trades
+        </span>
       </p>
     </form>
   );
