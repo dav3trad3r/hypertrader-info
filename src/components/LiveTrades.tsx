@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, memo } from 'react';
+import { useState, useEffect, useRef, useMemo, memo } from 'react';
 import { Activity, ArrowUpRight, ArrowDownRight, Zap } from 'lucide-react';
 import { type Fill } from '@/lib/hyperliquid';
 import { cn } from '@/lib/utils';
@@ -7,6 +7,20 @@ interface LiveTradesProps {
   address: string;
   initialFills: Fill[];
   marketType: 'all' | 'perps' | 'spot';
+}
+
+interface GroupedTrade {
+  oid: number;
+  coin: string;
+  side: 'B' | 'A';
+  dir: string;
+  totalSize: number;
+  avgPrice: number;
+  totalPnl: number;
+  totalFee: number;
+  fillCount: number;
+  latestTime: number;
+  isSpot: boolean;
 }
 
 const HYPERLIQUID_API = "https://api.hyperliquid.xyz/info";
@@ -37,20 +51,73 @@ function formatTime(timestamp: number): string {
   return new Date(timestamp).toLocaleDateString();
 }
 
+// Group fills by order ID (oid)
+function groupFillsByOrder(fills: Fill[]): GroupedTrade[] {
+  const orderMap = new Map<number, {
+    fills: Fill[];
+    totalSize: number;
+    totalValue: number;
+    totalPnl: number;
+    totalFee: number;
+    latestTime: number;
+  }>();
+
+  fills.forEach(fill => {
+    const existing = orderMap.get(fill.oid);
+    const size = parseFloat(fill.sz);
+    const price = parseFloat(fill.px);
+    const pnl = parseFloat(fill.closedPnl) || 0;
+    const fee = parseFloat(fill.fee) || 0;
+
+    if (existing) {
+      existing.fills.push(fill);
+      existing.totalSize += size;
+      existing.totalValue += size * price;
+      existing.totalPnl += pnl;
+      existing.totalFee += fee;
+      existing.latestTime = Math.max(existing.latestTime, fill.time);
+    } else {
+      orderMap.set(fill.oid, {
+        fills: [fill],
+        totalSize: size,
+        totalValue: size * price,
+        totalPnl: pnl,
+        totalFee: fee,
+        latestTime: fill.time,
+      });
+    }
+  });
+
+  return Array.from(orderMap.entries())
+    .map(([oid, data]) => {
+      const firstFill = data.fills[0];
+      return {
+        oid,
+        coin: firstFill.coin.startsWith('@') ? firstFill.coin.slice(1) : firstFill.coin,
+        side: firstFill.side,
+        dir: firstFill.dir,
+        totalSize: data.totalSize,
+        avgPrice: data.totalValue / data.totalSize,
+        totalPnl: data.totalPnl,
+        totalFee: data.totalFee,
+        fillCount: data.fills.length,
+        latestTime: data.latestTime,
+        isSpot: firstFill.coin.startsWith('@'),
+      };
+    })
+    .sort((a, b) => b.latestTime - a.latestTime);
+}
+
 const TradeItem = memo(function TradeItem({ 
-  fill, 
+  trade, 
   isNew 
 }: { 
-  fill: Fill; 
+  trade: GroupedTrade; 
   isNew: boolean;
 }) {
-  const pnl = parseFloat(fill.closedPnl) || 0;
-  const isProfitable = pnl > 0;
-  const isLoss = pnl < 0;
-  const isBuy = fill.side === 'B';
-  const coin = fill.coin.startsWith('@') ? fill.coin.slice(1) : fill.coin;
-  const isSpot = fill.coin.startsWith('@');
-  const volume = parseFloat(fill.sz) * parseFloat(fill.px);
+  const isProfitable = trade.totalPnl > 0;
+  const isLoss = trade.totalPnl < 0;
+  const isBuy = trade.side === 'B';
 
   return (
     <div 
@@ -66,16 +133,16 @@ const TradeItem = memo(function TradeItem({
           isBuy ? "bg-profit/20" : "bg-loss/20"
         )}>
           {isBuy ? (
-            <ArrowUpRight className={cn("w-4 h-4", "text-profit")} />
+            <ArrowUpRight className="w-4 h-4 text-profit" />
           ) : (
-            <ArrowDownRight className={cn("w-4 h-4", "text-loss")} />
+            <ArrowDownRight className="w-4 h-4 text-loss" />
           )}
         </div>
         
         <div>
           <div className="flex items-center gap-2">
-            <span className="font-medium text-sm text-foreground">{coin}</span>
-            {isSpot && (
+            <span className="font-medium text-sm text-foreground">{trade.coin}</span>
+            {trade.isSpot && (
               <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/20 text-primary">
                 SPOT
               </span>
@@ -84,33 +151,39 @@ const TradeItem = memo(function TradeItem({
               "text-xs",
               isBuy ? "text-profit" : "text-loss"
             )}>
-              {fill.dir}
+              {trade.dir}
             </span>
+            {trade.fillCount > 1 && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                {trade.fillCount} fills
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span className="font-mono">{parseFloat(fill.sz).toLocaleString()} @ ${parseFloat(fill.px).toLocaleString()}</span>
+            <span className="font-mono">
+              {trade.totalSize.toLocaleString(undefined, { maximumFractionDigits: 4 })} @ ${trade.avgPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+            </span>
           </div>
         </div>
       </div>
 
       <div className="text-right">
         <div className="flex items-center justify-end gap-2">
-          {pnl !== 0 && (
+          {trade.totalPnl !== 0 ? (
             <span className={cn(
               "font-mono text-sm font-semibold",
               isProfitable ? "text-profit" : "text-loss"
             )}>
-              {isProfitable ? '+' : ''}{formatCurrency(pnl)}
+              {isProfitable ? '+' : ''}{formatCurrency(trade.totalPnl)}
             </span>
-          )}
-          {pnl === 0 && (
+          ) : (
             <span className="font-mono text-sm text-muted-foreground">
-              {formatCurrency(volume)}
+              {formatCurrency(trade.totalSize * trade.avgPrice)}
             </span>
           )}
         </div>
         <span className="text-xs text-muted-foreground">
-          {formatTime(fill.time)}
+          {formatTime(trade.latestTime)}
         </span>
       </div>
     </div>
@@ -118,11 +191,8 @@ const TradeItem = memo(function TradeItem({
 });
 
 export function LiveTrades({ address, initialFills, marketType }: LiveTradesProps) {
-  const [trades, setTrades] = useState<Fill[]>(() => {
-    const filtered = filterByMarket(initialFills, marketType);
-    return filtered.slice(0, MAX_DISPLAY_TRADES);
-  });
-  const [newTradeIds, setNewTradeIds] = useState<Set<number>>(new Set());
+  const [fills, setFills] = useState<Fill[]>(initialFills);
+  const [newOrderIds, setNewOrderIds] = useState<Set<number>>(new Set());
   const [isLive, setIsLive] = useState(true);
   const latestTidRef = useRef<number>(initialFills[0]?.tid || 0);
 
@@ -132,12 +202,17 @@ export function LiveTrades({ address, initialFills, marketType }: LiveTradesProp
     return fills.filter(f => !f.coin.startsWith('@'));
   }
 
+  // Group fills into trades
+  const groupedTrades = useMemo(() => {
+    const filtered = filterByMarket(fills, marketType);
+    return groupFillsByOrder(filtered).slice(0, MAX_DISPLAY_TRADES);
+  }, [fills, marketType]);
+
   useEffect(() => {
-    // Update trades when marketType changes
-    const filtered = filterByMarket(initialFills, marketType);
-    setTrades(filtered.slice(0, MAX_DISPLAY_TRADES));
-    latestTidRef.current = filtered[0]?.tid || 0;
-  }, [marketType, initialFills]);
+    // Update fills when initialFills changes
+    setFills(initialFills);
+    latestTidRef.current = initialFills[0]?.tid || 0;
+  }, [initialFills]);
 
   useEffect(() => {
     if (!address) return;
@@ -155,31 +230,30 @@ export function LiveTrades({ address, initialFills, marketType }: LiveTradesProp
 
         if (!response.ok) return;
 
-        const fills: Fill[] = await response.json();
-        if (!fills || fills.length === 0) return;
+        const newFills: Fill[] = await response.json();
+        if (!newFills || newFills.length === 0) return;
 
-        // Filter by market type
-        const filteredFills = filterByMarket(fills, marketType);
+        // Find new fills (tid > latestTid)
+        const trulyNewFills = newFills.filter(f => f.tid > latestTidRef.current);
         
-        // Find new trades (tid > latestTid)
-        const newFills = filteredFills.filter(f => f.tid > latestTidRef.current);
-        
-        if (newFills.length > 0) {
+        if (trulyNewFills.length > 0) {
           // Update latest tid
-          latestTidRef.current = Math.max(...newFills.map(f => f.tid));
+          latestTidRef.current = Math.max(...trulyNewFills.map(f => f.tid));
           
-          // Add new trades to the front
-          setTrades(prev => {
-            const updated = [...newFills, ...prev].slice(0, MAX_DISPLAY_TRADES);
-            return updated;
+          // Merge new fills with existing
+          setFills(prev => {
+            const existingTids = new Set(prev.map(f => f.tid));
+            const uniqueNewFills = trulyNewFills.filter(f => !existingTids.has(f.tid));
+            return [...uniqueNewFills, ...prev];
           });
           
-          // Mark new trades as "new" for animation
-          setNewTradeIds(new Set(newFills.map(f => f.tid)));
+          // Mark new orders as "new" for animation
+          const newOids = new Set(trulyNewFills.map(f => f.oid));
+          setNewOrderIds(newOids);
           
           // Clear "new" status after animation
           setTimeout(() => {
-            setNewTradeIds(new Set());
+            setNewOrderIds(new Set());
           }, 2000);
         }
       } catch (error) {
@@ -190,7 +264,7 @@ export function LiveTrades({ address, initialFills, marketType }: LiveTradesProp
     const intervalId = setInterval(pollForNewTrades, POLL_INTERVAL);
     
     return () => clearInterval(intervalId);
-  }, [address, marketType]);
+  }, [address]);
 
   return (
     <div className="bg-card border border-border rounded-lg p-4">
@@ -214,12 +288,12 @@ export function LiveTrades({ address, initialFills, marketType }: LiveTradesProp
       </div>
 
       <div className="space-y-2">
-        {trades.length > 0 ? (
-          trades.map((trade) => (
+        {groupedTrades.length > 0 ? (
+          groupedTrades.map((trade) => (
             <TradeItem 
-              key={trade.tid} 
-              fill={trade} 
-              isNew={newTradeIds.has(trade.tid)}
+              key={trade.oid} 
+              trade={trade} 
+              isNew={newOrderIds.has(trade.oid)}
             />
           ))
         ) : (
@@ -231,10 +305,10 @@ export function LiveTrades({ address, initialFills, marketType }: LiveTradesProp
         )}
       </div>
 
-      {trades.length > 0 && (
+      {groupedTrades.length > 0 && (
         <div className="mt-4 pt-3 border-t border-border text-center">
           <p className="text-xs text-muted-foreground">
-            Showing {trades.length} most recent trades • Updates every 5s
+            Showing {groupedTrades.length} recent positions • Updates every 5s
           </p>
         </div>
       )}
