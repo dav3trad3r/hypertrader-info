@@ -275,19 +275,71 @@ export async function fetchAllFills(
   const allFills: Fill[] = [];
   const seenTids = new Set<number>();
   
-  const now = new Date();
-  let currentYear = now.getFullYear();
-  let currentMonth = now.getMonth();
-  
   // Go back to Jan 2022 as earliest possible date
   const startYear = 2022;
   const startMonth = 0;
   
-  let consecutiveEmptyMonths = 0;
   let monthsLoaded = 0;
   let limitReached = false;
   
   console.log('Starting full history fetch...');
+  
+  // First, fetch recent fills to determine where trading activity exists
+  // This helps us not stop early if user hasn't traded recently
+  let earliestTradeTime = Date.now();
+  let latestTradeTime = 0;
+  
+  try {
+    const response = await makeApiRequest({
+      type: "userFills",
+      user: address,
+    });
+
+    if (response.ok) {
+      const recentFills: Fill[] = await response.json();
+      if (recentFills && recentFills.length > 0) {
+        console.log(`Found ${recentFills.length} recent trades via userFills`);
+        for (const fill of recentFills) {
+          if (!seenTids.has(fill.tid)) {
+            seenTids.add(fill.tid);
+            allFills.push(fill);
+            if (fill.time < earliestTradeTime) earliestTradeTime = fill.time;
+            if (fill.time > latestTradeTime) latestTradeTime = fill.time;
+          }
+        }
+        
+        // Report initial progress
+        if (onProgress) {
+          onProgress([...allFills], 0, false, 'Recent trades');
+        }
+      }
+    }
+  } catch (error) {
+    console.error("Error fetching recent fills:", error);
+  }
+  
+  // If we found trades, scan from the earliest trade month backwards
+  // If no trades found, start from current month
+  const now = new Date();
+  let currentYear: number;
+  let currentMonth: number;
+  
+  if (earliestTradeTime < Date.now()) {
+    // Start from the month of the earliest trade we found
+    const earliestDate = new Date(earliestTradeTime);
+    currentYear = earliestDate.getFullYear();
+    currentMonth = earliestDate.getMonth();
+    console.log(`Starting scan from earliest known trade: ${currentYear}-${currentMonth + 1}`);
+  } else {
+    // No trades found yet, start from current month
+    currentYear = now.getFullYear();
+    currentMonth = now.getMonth();
+    console.log('No trades found via userFills, scanning from current month');
+  }
+  
+  let consecutiveEmptyMonths = 0;
+  // Increase tolerance for accounts that may have gaps
+  const MAX_CONSECUTIVE_EMPTY = 12; // 12 months instead of 6
   
   while (
     currentYear > startYear || 
@@ -328,9 +380,9 @@ export async function fetchAllFills(
       if (limitReached) break;
     } else {
       consecutiveEmptyMonths++;
-      // Stop if 6 consecutive months with no trades
-      if (consecutiveEmptyMonths >= 6) {
-        console.log('No trades for 6 months, stopping fetch');
+      // Stop if too many consecutive months with no trades
+      if (consecutiveEmptyMonths >= MAX_CONSECUTIVE_EMPTY) {
+        console.log(`No trades for ${MAX_CONSECUTIVE_EMPTY} months, stopping fetch`);
         break;
       }
     }
