@@ -1,3 +1,5 @@
+import { useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useHyperliquidData } from '@/hooks/useHyperliquidData';
 import { Header } from '@/components/Header';
 import { AddressSearch } from '@/components/AddressSearch';
@@ -11,8 +13,10 @@ import { EmptyState } from '@/components/EmptyState';
 import { MarketFilter } from '@/components/MarketFilter';
 import { SharePnLCard } from '@/components/SharePnLCard';
 import { LiveTrades } from '@/components/LiveTrades';
+import { ShareProfileButton } from '@/components/ShareProfileButton';
 
 const Index = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
   const { 
     filteredData, 
     rawFills,
@@ -30,6 +34,23 @@ const Index = () => {
     loadedMonths,
     clearData 
   } = useHyperliquidData();
+
+  // Auto-fetch if address is in URL params
+  useEffect(() => {
+    const urlAddress = searchParams.get('address');
+    if (urlAddress && !address && !isLoading) {
+      fetchData(urlAddress);
+    }
+  }, [searchParams, address, isLoading, fetchData]);
+
+  // Update URL when address changes
+  useEffect(() => {
+    if (address) {
+      setSearchParams({ address }, { replace: true });
+    } else if (searchParams.has('address')) {
+      setSearchParams({}, { replace: true });
+    }
+  }, [address, searchParams, setSearchParams]);
 
   const displayData = filteredData;
 
@@ -114,6 +135,7 @@ const Index = () => {
                     onChange={setMarketType}
                     counts={marketCounts}
                   />
+                  <ShareProfileButton address={address || ''} />
                   {displayData && (
                     <SharePnLCard 
                       summary={displayData.summary}
