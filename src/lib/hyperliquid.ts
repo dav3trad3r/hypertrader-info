@@ -20,6 +20,98 @@ export interface Fill {
   tid: number;
 }
 
+// Spot token metadata
+interface SpotToken {
+  name: string;
+  szDecimals: number;
+  weiDecimals: number;
+  index: number;
+  tokenId: string;
+  isCanonical: boolean;
+  fullName: string | null;
+}
+
+interface SpotMetaResponse {
+  tokens: SpotToken[];
+  universe: { name: string; tokens: number[]; index: number; isCanonical: boolean }[];
+}
+
+// Cache for spot token names: index -> name
+let spotTokenCache: Map<number, string> | null = null;
+let spotTokenCachePromise: Promise<Map<number, string>> | null = null;
+
+// Fetch spot token metadata and cache it
+async function fetchSpotMeta(): Promise<Map<number, string>> {
+  if (spotTokenCache) {
+    return spotTokenCache;
+  }
+  
+  // If already fetching, return the existing promise
+  if (spotTokenCachePromise) {
+    return spotTokenCachePromise;
+  }
+  
+  spotTokenCachePromise = (async () => {
+    try {
+      const response = await fetch("https://api.hyperliquid.xyz/info", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "spotMeta" }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch spot metadata: ${response.status}`);
+      }
+      
+      const data: SpotMetaResponse = await response.json();
+      const cache = new Map<number, string>();
+      
+      // Map token index to name
+      for (const token of data.tokens) {
+        cache.set(token.index, token.name);
+      }
+      
+      console.log(`Loaded ${cache.size} spot token names`);
+      spotTokenCache = cache;
+      return cache;
+    } catch (error) {
+      console.error("Error fetching spot metadata:", error);
+      spotTokenCachePromise = null;
+      return new Map<number, string>();
+    }
+  })();
+  
+  return spotTokenCachePromise;
+}
+
+// Get human-readable name for a coin (handles both perps and spot)
+export function getSpotTokenName(coin: string, cache: Map<number, string>): string {
+  if (!coin.startsWith('@')) {
+    return coin; // Regular perp
+  }
+  
+  // Extract token index from @XXX format
+  const indexStr = coin.substring(1);
+  const index = parseInt(indexStr, 10);
+  
+  if (isNaN(index)) {
+    return coin; // Invalid format, return as-is
+  }
+  
+  const name = cache.get(index);
+  return name ? `${name} (Spot)` : `Token ${coin}`;
+}
+
+// Preload spot token cache (call early in app lifecycle)
+export async function preloadSpotTokenCache(): Promise<void> {
+  await fetchSpotMeta();
+}
+
+// Get the spot token cache (fetches if not loaded)
+export async function getSpotTokenCache(): Promise<Map<number, string>> {
+  return fetchSpotMeta();
+}
+
 // Helper to determine if a fill is a spot trade
 export function isSpotTrade(fill: Fill): boolean {
   return fill.coin.startsWith('@');
@@ -523,7 +615,7 @@ export function processWeeklyPnL(dailyPnL: DailyPnL[]): WeeklyPnL[] {
 }
 
 // Process fills into asset performance data
-export function processAssetPerformance(fills: Fill[]): AssetPerformance[] {
+export function processAssetPerformance(fills: Fill[], spotTokenCache?: Map<number, string>): AssetPerformance[] {
   const assetMap = new Map<string, {
     pnl: number;
     trades: number;
@@ -532,8 +624,10 @@ export function processAssetPerformance(fills: Fill[]): AssetPerformance[] {
     losses: number;
   }>();
   
+  const cache = spotTokenCache || new Map<number, string>();
+  
   fills.forEach(fill => {
-    const coin = fill.coin.startsWith('@') ? `Token ${fill.coin}` : fill.coin;
+    const coin = getSpotTokenName(fill.coin, cache);
     const pnl = parseFloat(fill.closedPnl) || 0;
     const volume = parseFloat(fill.sz) * parseFloat(fill.px);
     
@@ -608,10 +702,13 @@ export function calculateSummary(
 
 // Main function to fetch and process all trading data
 export async function fetchTradingData(address: string): Promise<UserTradingData> {
-  const fills = await fetchUserFills(address);
+  const [fills, spotCache] = await Promise.all([
+    fetchUserFills(address),
+    getSpotTokenCache(),
+  ]);
   const dailyPnL = processDailyPnL(fills);
   const weeklyPnL = processWeeklyPnL(dailyPnL);
-  const assetPerformance = processAssetPerformance(fills);
+  const assetPerformance = processAssetPerformance(fills, spotCache);
   const summary = calculateSummary(fills, dailyPnL);
   
   return {

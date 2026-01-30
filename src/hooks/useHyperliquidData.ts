@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useRef } from 'react';
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { 
   fetchAllAvailableFills,
   fetchFillsForMonth, 
@@ -9,6 +9,7 @@ import {
   processAssetPerformance,
   calculateSummary,
   isSpotTrade,
+  getSpotTokenCache,
   type UserTradingData,
   type MarketType,
   type Fill,
@@ -51,8 +52,16 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
   const [address, setAddress] = useState('');
   const [ensName, setEnsName] = useState<string | null>(null);
   const [marketType, setMarketType] = useState<MarketType>('all');
+  const [spotTokenCache, setSpotTokenCache] = useState<Map<number, string>>(new Map());
   
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  // Preload spot token cache on mount
+  useEffect(() => {
+    getSpotTokenCache().then(cache => {
+      setSpotTokenCache(cache);
+    });
+  }, []);
 
   const marketCounts = useMemo(() => {
     const perps = rawFills.filter(f => !isSpotTrade(f)).length;
@@ -73,7 +82,7 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
     
     const dailyPnL = processDailyPnL(filteredFills);
     const weeklyPnL = processWeeklyPnL(dailyPnL);
-    const assetPerformance = processAssetPerformance(filteredFills);
+    const assetPerformance = processAssetPerformance(filteredFills, spotTokenCache);
     const summary = calculateSummary(filteredFills, dailyPnL);
     
     return {
@@ -83,7 +92,7 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
       assetPerformance,
       summary,
     };
-  }, [rawFills, marketType]);
+  }, [rawFills, marketType, spotTokenCache]);
 
   // Keep original data for reference
   const data = useMemo(() => {
@@ -91,7 +100,7 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
     
     const dailyPnL = processDailyPnL(rawFills);
     const weeklyPnL = processWeeklyPnL(dailyPnL);
-    const assetPerformance = processAssetPerformance(rawFills);
+    const assetPerformance = processAssetPerformance(rawFills, spotTokenCache);
     const summary = calculateSummary(rawFills, dailyPnL);
     
     return {
@@ -101,7 +110,7 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
       assetPerformance,
       summary,
     };
-  }, [rawFills]);
+  }, [rawFills, spotTokenCache]);
 
   // Track which months we've attempted to load (even if empty)
   const attemptedMonths = useRef<Set<string>>(new Set());
