@@ -48,7 +48,7 @@ export function AddressSearch({
             type="text"
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
-            placeholder="Enter Hyperliquid address (0x...)"
+            placeholder="Enter address (0x...) or ENS name (vitalik.eth)"
             className="flex-1 border-0 bg-transparent font-mono text-sm placeholder:text-muted-foreground focus-visible:ring-0 focus-visible:ring-offset-0"
             disabled={isLoading}
           />
@@ -76,7 +76,7 @@ export function AddressSearch({
       </div>
       
       <p className="text-center text-xs text-muted-foreground mt-3">
-        Enter any Hyperliquid wallet address to view trading history
+        Enter any Hyperliquid wallet address or ENS name to view trading history
         <span className="block mt-1 text-muted-foreground/70">
           Note: Hyperliquid's API limits access to the most recent ~10,000 trades
         </span>

@@ -25,7 +25,8 @@ const Index = () => {
     hasMoreHistory,
     hitApiLimit,
     error, 
-    address, 
+    address,
+    ensName,
     marketType,
     setMarketType,
     marketCounts,
@@ -120,9 +121,16 @@ const Index = () => {
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div>
                   <p className="text-xs text-muted-foreground">Viewing trading history for</p>
-                  <p className="font-mono text-sm text-foreground truncate max-w-md">
-                    {address}
-                  </p>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    {ensName && (
+                      <span className="font-semibold text-base text-foreground">
+                        {ensName}
+                      </span>
+                    )}
+                    <p className={`font-mono text-sm truncate max-w-md ${ensName ? 'text-muted-foreground' : 'text-foreground'}`}>
+                      {ensName ? `(${address?.slice(0, 6)}...${address?.slice(-4)})` : address}
+                    </p>
+                  </div>
                   <p className="text-xs text-muted-foreground mt-1">
                     {rawFills.length.toLocaleString()} trades loaded
                     {isLoadingMonth && <span className="text-primary animate-pulse ml-2">• Loading more...</span>}
