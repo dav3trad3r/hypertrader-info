@@ -13,6 +13,7 @@ import {
   type MarketType,
   type Fill,
 } from '@/lib/hyperliquid';
+import { resolveInput, isENSName } from '@/lib/ens';
 import { toast } from '@/hooks/use-toast';
 
 export interface UseHyperliquidDataReturn {
@@ -26,10 +27,11 @@ export interface UseHyperliquidDataReturn {
   hitApiLimit: boolean;
   error: string | null;
   address: string;
+  ensName: string | null;
   marketType: MarketType;
   setMarketType: (type: MarketType) => void;
   marketCounts: { all: number; perps: number; spot: number };
-  fetchData: (address: string) => Promise<void>;
+  fetchData: (addressOrENS: string) => Promise<void>;
   loadMonth: (year: number, month: number) => Promise<void>;
   clearData: () => void;
 }
@@ -47,6 +49,7 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
   const [hitApiLimit, setHitApiLimit] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [address, setAddress] = useState('');
+  const [ensName, setEnsName] = useState<string | null>(null);
   const [marketType, setMarketType] = useState<MarketType>('all');
   
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -163,16 +166,11 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
     }
   }, [address, loadedMonths, isLoadingMonth]);
 
-  const fetchData = useCallback(async (inputAddress: string) => {
-    const trimmedAddress = inputAddress.trim();
+  const fetchData = useCallback(async (inputAddressOrENS: string) => {
+    const trimmed = inputAddressOrENS.trim();
     
-    if (!trimmedAddress) {
-      setError('Please enter an address');
-      return;
-    }
-    
-    if (!isValidAddress(trimmedAddress)) {
-      setError('Invalid Ethereum address format');
+    if (!trimmed) {
+      setError('Please enter an address or ENS name');
       return;
     }
     
@@ -184,17 +182,48 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
     
     setIsLoading(true);
     setError(null);
-    setAddress(trimmedAddress);
     setMarketType('all');
     setLoadedMonths(new Set());
-    attemptedMonths.current = new Set(); // Reset attempted months for new address
+    attemptedMonths.current = new Set();
     setRawFills([]);
     setHasMoreHistory(false);
     setHitApiLimit(false);
+    setEnsName(null);
     
     try {
+      // Resolve ENS name or validate address
+      let resolvedAddress: string;
+      let resolvedENS: string | null = null;
+      
+      if (isENSName(trimmed)) {
+        // Resolve ENS name to address
+        const result = await resolveInput(trimmed);
+        if (!result.address) {
+          setError(`Could not resolve ENS name "${trimmed}"`);
+          setIsLoading(false);
+          return;
+        }
+        resolvedAddress = result.address;
+        resolvedENS = trimmed.toLowerCase();
+      } else if (isValidAddress(trimmed)) {
+        resolvedAddress = trimmed;
+        // Try reverse lookup for ENS name (don't block on failure)
+        resolveInput(trimmed).then(result => {
+          if (result.ensName) {
+            setEnsName(result.ensName);
+          }
+        }).catch(() => {});
+      } else {
+        setError('Invalid Ethereum address or ENS name');
+        setIsLoading(false);
+        return;
+      }
+      
+      setAddress(resolvedAddress);
+      setEnsName(resolvedENS);
+      
       // Fetch ALL available fills (up to 10K API limit)
-      const result = await fetchAllAvailableFills(trimmedAddress);
+      const result = await fetchAllAvailableFills(resolvedAddress);
       
       if (result.fills.length === 0) {
         setError('No trading history found for this address');
@@ -244,6 +273,7 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
     setRawFills([]);
     setError(null);
     setAddress('');
+    setEnsName(null);
     setMarketType('all');
     setLoadedMonths(new Set());
     attemptedMonths.current = new Set();
@@ -262,6 +292,7 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
     hitApiLimit,
     error,
     address,
+    ensName,
     marketType,
     setMarketType,
     marketCounts,
