@@ -100,18 +100,24 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
     };
   }, [rawFills]);
 
-  // Load additional month data (lazy loading)
+  // Track which months we've attempted to load (even if empty)
+  const attemptedMonths = useRef<Set<string>>(new Set());
+
+  // Load additional month data (lazy loading for months not covered by initial fetch)
   const loadMonth = useCallback(async (year: number, month: number) => {
     const monthKey = getMonthKey(year, month);
     
-    // Skip if already loaded or currently loading
-    if (loadedMonths.has(monthKey) || isLoadingMonth || !address) {
+    // Skip if already loaded, attempted, or currently loading
+    if (loadedMonths.has(monthKey) || attemptedMonths.current.has(monthKey) || isLoadingMonth || !address) {
       return;
     }
     
+    // Mark as attempted to prevent duplicate requests
+    attemptedMonths.current.add(monthKey);
     setIsLoadingMonth(true);
     
     try {
+      console.log(`Lazy loading month ${monthKey} for high-volume account...`);
       const monthFills = await fetchFillsForMonth(address, year, month);
       
       if (monthFills.length > 0) {
@@ -119,17 +125,34 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
           const existingTids = new Set(prev.map(f => f.tid));
           const newFills = monthFills.filter(f => !existingTids.has(f.tid));
           
-          if (newFills.length === 0) return prev;
+          console.log(`Month ${monthKey}: ${monthFills.length} fetched, ${newFills.length} new`);
+          
+          if (newFills.length === 0) {
+            // All fills were duplicates, month data was already in initial fetch
+            return prev;
+          }
           
           const combined = [...prev, ...newFills];
           combined.sort((a, b) => b.time - a.time);
+          
+          toast({
+            title: "Additional trades loaded",
+            description: `Found ${newFills.length} more trades for ${new Date(year, month).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`,
+            duration: 3000,
+          });
+          
           return combined;
         });
+      } else {
+        console.log(`Month ${monthKey}: No trades found`);
       }
       
+      // Mark as loaded (even if empty, to show "no trades" instead of loading state)
       setLoadedMonths(prev => new Set([...prev, monthKey]));
     } catch (err) {
       console.error('Error loading month:', err);
+      // Remove from attempted so user can retry
+      attemptedMonths.current.delete(monthKey);
       toast({
         title: "Failed to load month",
         description: "Could not fetch trades for this month. Please try again.",
@@ -164,6 +187,7 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
     setAddress(trimmedAddress);
     setMarketType('all');
     setLoadedMonths(new Set());
+    attemptedMonths.current = new Set(); // Reset attempted months for new address
     setRawFills([]);
     setHasMoreHistory(false);
     setHitApiLimit(false);
@@ -179,7 +203,8 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
         setRawFills(result.fills);
         setHitApiLimit(result.hitApiLimit);
         
-        // Mark all months that have data as loaded
+        // Mark months that have data as loaded
+        // These are the months covered by the initial 10K fetch
         const monthsWithData = new Set<string>();
         result.fills.forEach(fill => {
           const date = new Date(fill.time);
@@ -191,9 +216,9 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
         if (result.hitApiLimit) {
           toast({
             title: "API limit reached",
-            description: `Loaded ${result.totalFetched.toLocaleString()} trades. Hyperliquid's API only allows access to the most recent ~10,000 fills. Older history is not available.`,
-            variant: "destructive",
-            duration: 8000,
+            description: `Loaded ${result.totalFetched.toLocaleString()} trades. Navigate to older months to load more history.`,
+            variant: "default",
+            duration: 5000,
           });
         } else {
           toast({
@@ -221,6 +246,7 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
     setAddress('');
     setMarketType('all');
     setLoadedMonths(new Set());
+    attemptedMonths.current = new Set();
     setHasMoreHistory(false);
     setHitApiLimit(false);
   }, []);
