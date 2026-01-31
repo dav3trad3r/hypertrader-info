@@ -4,6 +4,7 @@ import { Coins } from 'lucide-react';
 
 // Local asset overrides - import custom logos
 import silverLogo from '@/assets/silver.svg';
+import goldLogo from '@/assets/gold.svg';
 
 interface CoinIconProps {
   coin: string;
@@ -14,6 +15,7 @@ interface CoinIconProps {
 // Map of coin names to local asset URLs
 const LOCAL_ASSET_OVERRIDES: Record<string, string> = {
   'SILVER': silverLogo,
+  'GOLD': goldLogo,
 };
 
 // Get the clean coin name for the image URL
