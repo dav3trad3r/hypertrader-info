@@ -1,27 +1,16 @@
 import { useRef, useState, useMemo } from 'react';
 import { toPng } from 'html-to-image';
-import { Download, Share2, X, Calendar, TrendingUp, TrendingDown, Trophy, Target } from 'lucide-react';
+import { Download, Share2, Calendar, TrendingUp, TrendingDown, Trophy, Target } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { type TradingSummary, type DailyPnL } from '@/lib/hyperliquid';
-import { cn } from '@/lib/utils';
+import { cn, formatCurrency } from '@/lib/utils';
 
 interface SharePnLCardProps {
   summary: TradingSummary;
   dailyPnL: DailyPnL[];
   address: string;
   marketType: 'all' | 'perps' | 'spot';
-}
-
-function formatCurrency(value: number): string {
-  const absValue = Math.abs(value);
-  if (absValue >= 1000000) {
-    return `$${(value / 1000000).toFixed(2)}M`;
-  }
-  if (absValue >= 1000) {
-    return `$${(value / 1000).toFixed(2)}K`;
-  }
-  return `$${value.toFixed(2)}`;
 }
 
 function formatAddress(address: string): string {
