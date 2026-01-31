@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { type DailyPnL, type WeeklyPnL, type Fill } from '@/lib/hyperliquid';
+import { type DailyPnL, type WeeklyPnL, type Fill, formatLocalDateKey, parseLocalDateKey } from '@/lib/hyperliquid';
 import { DayTradeBreakdown } from '@/components/DayTradeBreakdown';
 import { cn, formatCurrency } from '@/lib/utils';
 
@@ -114,7 +114,7 @@ export function PnLCalendar({
     let volume = 0;
     
     dailyPnL.forEach(d => {
-      const date = new Date(d.date);
+      const date = parseLocalDateKey(d.date);
       if (date.getFullYear() === year && date.getMonth() === month) {
         total += d.pnl;
         trades += d.trades;
@@ -234,7 +234,7 @@ export function PnLCalendar({
                 );
               }
               
-              const isToday = day.date === new Date().toISOString().split('T')[0];
+              const isToday = day.date === formatLocalDateKey(Date.now());
               const hasData = day.trades > 0;
               const isProfitable = day.pnl > 0;
               const isLoss = day.pnl < 0;
@@ -281,7 +281,7 @@ export function PnLCalendar({
                   {hoveredDay?.date === day.date && hasData && !isSelected && (
                     <div className="absolute z-10 bottom-full left-1/2 -translate-x-1/2 mb-2 bg-popover border border-border rounded-lg p-3 shadow-lg min-w-[160px] animate-fade-in pointer-events-none">
                       <div className="text-xs text-muted-foreground mb-2">
-                        {new Date(day.date).toLocaleDateString('en-US', { 
+                        {parseLocalDateKey(day.date).toLocaleDateString('en-US', { 
                           weekday: 'short', 
                           month: 'short', 
                           day: 'numeric' 

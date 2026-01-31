@@ -1,6 +1,6 @@
 import { useMemo, useState, memo } from 'react';
 import { X, ArrowUpRight, ArrowDownRight, ChevronDown } from 'lucide-react';
-import { type Fill } from '@/lib/hyperliquid';
+import { type Fill, formatLocalDateKey, parseLocalDateKey } from '@/lib/hyperliquid';
 import { cn, formatCurrency } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
@@ -81,7 +81,7 @@ export function DayTradeBreakdown({ date, fills, onClose }: DayTradeBreakdownPro
 
   const dayFills = useMemo(() => {
     return fills
-      .filter(f => new Date(f.time).toISOString().split('T')[0] === date)
+      .filter(f => formatLocalDateKey(f.time) === date)
       .sort((a, b) => b.time - a.time);
   }, [fills, date]);
 
@@ -108,7 +108,7 @@ export function DayTradeBreakdown({ date, fills, onClose }: DayTradeBreakdownPro
     return { totalPnl, totalVolume, totalFees, wins, losses, trades: dayFills.length };
   }, [dayFills]);
 
-  const formattedDate = useMemo(() => new Date(date).toLocaleDateString('en-US', {
+  const formattedDate = useMemo(() => parseLocalDateKey(date).toLocaleDateString('en-US', {
     weekday: 'long',
     month: 'long',
     day: 'numeric',
