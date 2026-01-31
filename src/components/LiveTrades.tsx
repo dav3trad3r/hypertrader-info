@@ -102,6 +102,16 @@ interface TwapHistoryItem {
   twapId: number;
 }
 
+interface TwapSliceFill {
+  twapId: number;
+  coin: string;
+  sz: string;
+  px: string;
+  time: number;
+  side: 'B' | 'A';
+  fee: string;
+}
+
 const HYPERLIQUID_API = "https://api.hyperliquid.xyz/info";
 const POLL_INTERVAL = 5000;
 
@@ -414,8 +424,8 @@ export function LiveTrades({ address, marketType }: LiveTradesProps) {
 
     const fetchPositions = async () => {
       try {
-        // Fetch perp (main dex), HIP-3 perp (xyz dex), spot positions, and TWAP history for both dexes in parallel
-        const [perpResponse, xyzPerpResponse, spotResponse, twapHistoryResponse, xyzTwapHistoryResponse] = await Promise.all([
+        // Fetch perp (main dex), HIP-3 perp (xyz dex), spot positions, TWAP history, and slice fills in parallel
+        const [perpResponse, xyzPerpResponse, spotResponse, twapHistoryResponse, xyzTwapHistoryResponse, sliceFillsResponse] = await Promise.all([
           fetch(HYPERLIQUID_API, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -458,7 +468,31 @@ export function LiveTrades({ address, marketType }: LiveTradesProps) {
               dex: "xyz", // HIP-3 TWAPs
             }),
           }),
+          fetch(HYPERLIQUID_API, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              type: "userTwapSliceFills",
+              user: address,
+            }),
+          }),
         ]);
+
+        // Parse slice fills to calculate actual executed amounts per twapId
+        let sliceFillsByTwapId = new Map<number, { executedSz: number; executedNtl: number }>();
+        if (sliceFillsResponse.ok) {
+          const sliceFills: TwapSliceFill[] = await sliceFillsResponse.json();
+          if (Array.isArray(sliceFills)) {
+            sliceFills.forEach(fill => {
+              const existing = sliceFillsByTwapId.get(fill.twapId) || { executedSz: 0, executedNtl: 0 };
+              const sz = parseFloat(fill.sz) || 0;
+              const px = parseFloat(fill.px) || 0;
+              existing.executedSz += sz;
+              existing.executedNtl += sz * px;
+              sliceFillsByTwapId.set(fill.twapId, existing);
+            });
+          }
+        }
 
         const allCurrentCoins = new Set([
           ...perpPositions.map(p => p.coin),
@@ -537,7 +571,12 @@ export function LiveTrades({ address, marketType }: LiveTradesProps) {
         }
 
         // Process TWAP history to find active TWAPs (merge main + xyz dex)
-        const processTwapHistory = (twapHistory: TwapHistoryItem[], isXyz: boolean = false): TwapOrder[] => {
+        // Use slice fills data for accurate progress when available
+        const processTwapHistory = (
+          twapHistory: TwapHistoryItem[], 
+          isXyz: boolean = false,
+          sliceFillsMap: Map<number, { executedSz: number; executedNtl: number }>
+        ): TwapOrder[] => {
           if (!Array.isArray(twapHistory) || twapHistory.length === 0) return [];
           
           // Group by twapId and get the latest status for each
@@ -557,14 +596,19 @@ export function LiveTrades({ address, marketType }: LiveTradesProps) {
           twapLatestStatus.forEach((item, twapId) => {
             // Only show TWAPs that are currently "activated"
             if (item.status.status === 'activated') {
+              // Get real execution data from slice fills if available
+              const sliceData = sliceFillsMap.get(twapId);
+              const executedSz = sliceData ? String(sliceData.executedSz) : item.state.executedSz;
+              const executedNtl = sliceData ? String(sliceData.executedNtl) : item.state.executedNtl;
+              
               activeTwaps.push({
                 // Use unique ID by combining dex prefix with twapId to avoid collisions
                 twapId: isXyz ? twapId + 1000000 : twapId,
                 coin: item.state.coin,
                 side: item.state.side,
                 sz: item.state.sz,
-                executedSz: item.state.executedSz,
-                executedNtl: item.state.executedNtl,
+                executedSz,
+                executedNtl,
                 minutes: item.state.minutes,
                 reduceOnly: item.state.reduceOnly,
                 randomize: item.state.randomize,
@@ -582,7 +626,7 @@ export function LiveTrades({ address, marketType }: LiveTradesProps) {
         
         if (twapHistoryResponse.ok) {
           const mainTwapHistory: TwapHistoryItem[] = await twapHistoryResponse.json();
-          const mainTwaps = processTwapHistory(mainTwapHistory, false);
+          const mainTwaps = processTwapHistory(mainTwapHistory, false, sliceFillsByTwapId);
           mainTwaps.forEach(t => {
             seenTwapIds.add(t.twapId);
             allActiveTwaps.push(t);
@@ -592,7 +636,7 @@ export function LiveTrades({ address, marketType }: LiveTradesProps) {
         if (xyzTwapHistoryResponse.ok) {
           const xyzTwapHistory: TwapHistoryItem[] = await xyzTwapHistoryResponse.json();
           // Only include TWAPs that are actual HIP-3 assets (xyz: prefix) AND not already seen
-          const xyzTwaps = processTwapHistory(xyzTwapHistory, true)
+          const xyzTwaps = processTwapHistory(xyzTwapHistory, true, sliceFillsByTwapId)
             .filter(t => t.coin.startsWith('xyz:') && !seenTwapIds.has(t.twapId - 1000000));
           allActiveTwaps = [...allActiveTwaps, ...xyzTwaps];
         }
