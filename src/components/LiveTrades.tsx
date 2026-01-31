@@ -315,6 +315,13 @@ const TwapOrderItem = memo(function TwapOrderItem({
   const avgPrice = executedSize > 0 ? executedNtl / executedSize : 0;
   const isBuy = twap.side === 'B';
   
+  // Calculate remaining size and estimated remaining notional
+  const remainingSize = totalSize - executedSize;
+  // Estimate remaining notional using avg price if available, otherwise use executed ratio
+  const remainingNtl = avgPrice > 0 
+    ? remainingSize * avgPrice 
+    : (totalSize > 0 && executedSize > 0 ? (remainingSize / executedSize) * executedNtl : 0);
+  
   // Calculate estimated time remaining
   const elapsed = Date.now() - twap.time;
   const totalDuration = twap.minutes * 60 * 1000;
@@ -326,6 +333,11 @@ const TwapOrderItem = memo(function TwapOrderItem({
   // Clean up coin name (remove @ prefix for spot)
   const displayCoin = twap.coin.startsWith('@') ? twap.coin.slice(1) : twap.coin;
   const isSpot = twap.coin.startsWith('@');
+  
+  // Format as full number with commas
+  const formatFullCurrency = (value: number) => {
+    return '$' + value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
 
   return (
     <div 
@@ -383,11 +395,11 @@ const TwapOrderItem = memo(function TwapOrderItem({
               <TrendingDown className="w-3 h-3 text-loss" />
             )}
             <span className="font-mono text-sm font-semibold text-foreground">
-              {formatCurrency(executedNtl)}
+              {formatFullCurrency(remainingNtl)}
             </span>
           </div>
           <span className="text-xs text-muted-foreground">
-            {remainingMinutes > 0 ? `~${remainingMinutes}m left` : 'Finishing...'}
+            {remainingMinutes > 0 ? `~${remainingMinutes}m remaining` : 'Finishing...'}
           </span>
         </div>
       </div>
