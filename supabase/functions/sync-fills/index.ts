@@ -148,7 +148,9 @@ Deno.serve(async (req) => {
         address: normalizedAddress,
         last_synced_at: new Date().toISOString(),
         total_fills: 0,
-        is_active: true
+        is_active: true,
+        last_accessed_at: new Date().toISOString(),
+        access_count: 1
       }, { onConflict: 'address' })
 
       return new Response(JSON.stringify({ 
@@ -231,7 +233,14 @@ Deno.serve(async (req) => {
     const apiOldestTid = fills.length > 0 ? Math.min(...fills.map(f => f.tid)) : null
     const hasGap = apiOldestTid && oldestFill?.tid && apiOldestTid > oldestFill.tid + 1000
 
-    // Update tracking info
+    // Update tracking info with access tracking
+    // First check if address exists to handle access_count increment
+    const { data: existingTracking } = await supabase
+      .from('tracked_addresses')
+      .select('access_count')
+      .eq('address', normalizedAddress)
+      .maybeSingle()
+
     await supabase.from('tracked_addresses').upsert({
       address: normalizedAddress,
       last_synced_at: new Date().toISOString(),
@@ -239,7 +248,9 @@ Deno.serve(async (req) => {
       oldest_tid: oldestFill?.tid,
       total_fills: totalFills,
       has_gap: hasGap,
-      is_active: true
+      is_active: true,
+      last_accessed_at: new Date().toISOString(),
+      access_count: (existingTracking?.access_count || 0) + 1
     }, { onConflict: 'address' })
 
     return new Response(JSON.stringify({
