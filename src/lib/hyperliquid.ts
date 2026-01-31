@@ -164,6 +164,41 @@ export interface TradingSummary {
   avgDailyPnl: number;
   largestWin: number;
   largestLoss: number;
+  accountValue?: number;
+}
+
+export interface AccountState {
+  marginSummary: {
+    accountValue: string;
+    totalMarginUsed: string;
+    totalNtlPos: string;
+  };
+  withdrawable: string;
+}
+
+// Fetch current account state (balance)
+export async function fetchAccountState(address: string): Promise<AccountState | null> {
+  try {
+    const response = await fetch("https://api.hyperliquid.xyz/info", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ 
+        type: "clearinghouseState",
+        user: address 
+      }),
+    });
+    
+    if (!response.ok) {
+      console.warn('Failed to fetch account state:', response.status);
+      return null;
+    }
+    
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Error fetching account state:', error);
+    return null;
+  }
 }
 
 export interface UserTradingData {

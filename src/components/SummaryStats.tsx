@@ -1,4 +1,4 @@
-import { TrendingUp, TrendingDown, DollarSign, Target, BarChart3, Calendar } from 'lucide-react';
+import { TrendingUp, TrendingDown, DollarSign, Target, BarChart3, Calendar, Wallet } from 'lucide-react';
 import { type TradingSummary } from '@/lib/hyperliquid';
 import { cn, formatCurrency, formatVolume } from '@/lib/utils';
 
@@ -51,9 +51,26 @@ function StatCard({ label, value, subValue, icon, trend, className }: StatCardPr
 
 export function SummaryStats({ summary }: SummaryStatsProps) {
   const isProfitable = summary.totalPnl >= 0;
+  const hasAccountValue = summary.accountValue !== undefined && summary.accountValue !== null;
   
   return (
     <div className="space-y-3 sm:space-y-4">
+      {/* Account Balance Card */}
+      {hasAccountValue && (
+        <div className="bg-card border border-border rounded-xl p-4 sm:p-6">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="text-xs sm:text-sm text-muted-foreground">Account Balance</p>
+              <p className="text-2xl sm:text-4xl font-mono font-bold text-foreground truncate">
+                {formatCurrency(summary.accountValue!)}
+              </p>
+            </div>
+            <div className="p-3 sm:p-4 rounded-full shrink-0 bg-secondary">
+              <Wallet className="w-6 h-6 sm:w-8 sm:h-8 text-muted-foreground" />
+            </div>
+          </div>
+        </div>
+      )}
       {/* Main PnL Card */}
       <div className={cn(
         "bg-card border-2 rounded-xl p-4 sm:p-6 transition-all duration-300",
