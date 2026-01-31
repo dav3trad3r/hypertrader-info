@@ -29,7 +29,7 @@ export function CoinIcon({ coin, size = 'md', className }: CoinIconProps) {
   const [hasError, setHasError] = useState(false);
   
   const cleanName = getCleanCoinName(coin);
-  const imageUrl = `https://app.hyperliquid.xyz/coins/${cleanName}.png`;
+  const imageUrl = `https://app.hyperliquid.xyz/coins/${cleanName}.svg`;
   
   const sizeClasses = {
     sm: 'w-5 h-5',
