@@ -22,6 +22,8 @@ const Index = () => {
     rawFills,
     isLoading,
     isLoadingMonth,
+    isSyncing,
+    trackingInfo,
     hasMoreHistory,
     hitApiLimit,
     error, 
@@ -87,8 +89,36 @@ const Index = () => {
         {/* Data Display */}
         {rawFills.length > 0 && !isLoading && (
           <div className="space-y-6 animate-fade-in">
+            {/* Gap Warning */}
+            {trackingInfo?.has_gap && (
+              <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4 flex items-start gap-3">
+                <svg 
+                  className="w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5" 
+                  fill="none" 
+                  viewBox="0 0 24 24" 
+                  stroke="currentColor"
+                >
+                  <path 
+                    strokeLinecap="round" 
+                    strokeLinejoin="round" 
+                    strokeWidth={2} 
+                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" 
+                  />
+                </svg>
+                <div>
+                  <p className="text-sm font-medium text-yellow-500">
+                    Historical Gap Detected
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Some historical trades may be missing. Keep visiting to accumulate more history over time.
+                    We've stored {trackingInfo.total_fills?.toLocaleString() || 0} fills so far.
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* API Limit Warning */}
-            {hitApiLimit && (
+            {hitApiLimit && !trackingInfo?.has_gap && (
               <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-4 flex items-start gap-3">
                 <svg 
                   className="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" 
@@ -109,8 +139,7 @@ const Index = () => {
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
                     Hyperliquid's API only provides access to the most recent ~10,000 trades. 
-                    Older trading history is not available through the direct API. 
-                    For complete history, consider using a third-party indexer like Allium or Nansen.
+                    Your data is being synced to our database for unlimited historical access on future visits.
                   </p>
                 </div>
               </div>
@@ -131,10 +160,25 @@ const Index = () => {
                       {ensName ? `(${address?.slice(0, 6)}...${address?.slice(-4)})` : address}
                     </p>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {rawFills.length.toLocaleString()} trades loaded
-                    {isLoadingMonth && <span className="text-primary animate-pulse ml-2">• Loading more...</span>}
-                  </p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <p className="text-xs text-muted-foreground">
+                      {rawFills.length.toLocaleString()} trades loaded
+                      {trackingInfo && trackingInfo.total_fills > rawFills.length && (
+                        <span className="text-primary ml-1">
+                          ({trackingInfo.total_fills.toLocaleString()} total in history)
+                        </span>
+                      )}
+                      {isLoadingMonth && <span className="text-primary animate-pulse ml-2">• Loading more...</span>}
+                    </p>
+                    {isSyncing && (
+                      <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                        Syncing...
+                      </span>
+                    )}
+                  </div>
                 </div>
                 
                 <div className="flex items-center gap-2">

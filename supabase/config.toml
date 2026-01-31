@@ -1,1 +1,7 @@
 project_id = "qqagnzkqwsewqykminre"
+
+[functions.sync-fills]
+verify_jwt = false
+
+[functions.get-fills]
+verify_jwt = false
