@@ -405,8 +405,8 @@ export function LiveTrades({ address, marketType }: LiveTradesProps) {
 
     const fetchPositions = async () => {
       try {
-        // Fetch perp (main dex), HIP-3 perp (xyz dex), spot positions, and TWAP history in parallel
-        const [perpResponse, xyzPerpResponse, spotResponse, twapHistoryResponse] = await Promise.all([
+        // Fetch perp (main dex), HIP-3 perp (xyz dex), spot positions, and TWAP history for both dexes in parallel
+        const [perpResponse, xyzPerpResponse, spotResponse, twapHistoryResponse, xyzTwapHistoryResponse] = await Promise.all([
           fetch(HYPERLIQUID_API, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -438,6 +438,15 @@ export function LiveTrades({ address, marketType }: LiveTradesProps) {
             body: JSON.stringify({
               type: "twapHistory",
               user: address,
+            }),
+          }),
+          fetch(HYPERLIQUID_API, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              type: "twapHistory",
+              user: address,
+              dex: "xyz", // HIP-3 TWAPs
             }),
           }),
         ]);
@@ -518,63 +527,74 @@ export function LiveTrades({ address, marketType }: LiveTradesProps) {
           }
         }
 
-        // Process TWAP history to find active TWAPs
-        if (twapHistoryResponse.ok) {
-          const twapHistory: TwapHistoryItem[] = await twapHistoryResponse.json();
+        // Process TWAP history to find active TWAPs (merge main + xyz dex)
+        const processTwapHistory = (twapHistory: TwapHistoryItem[], isXyz: boolean = false): TwapOrder[] => {
+          if (!Array.isArray(twapHistory) || twapHistory.length === 0) return [];
           
-          if (Array.isArray(twapHistory) && twapHistory.length > 0) {
-            // Group by twapId and get the latest status for each
-            const twapLatestStatus = new Map<number, TwapHistoryItem>();
-            
-            twapHistory.forEach(item => {
-              const existing = twapLatestStatus.get(item.twapId);
-              // Keep the most recent entry for each twapId
-              if (!existing || item.time > existing.time) {
-                twapLatestStatus.set(item.twapId, item);
-              }
-            });
-            
-            // Filter for active TWAPs only
-            const activeTwaps: TwapOrder[] = [];
-            
-            twapLatestStatus.forEach((item, twapId) => {
-              // Only show TWAPs that are currently "activated"
-              if (item.status.status === 'activated') {
-                activeTwaps.push({
-                  twapId,
-                  coin: item.state.coin,
-                  side: item.state.side,
-                  sz: item.state.sz,
-                  executedSz: item.state.executedSz,
-                  executedNtl: item.state.executedNtl,
-                  minutes: item.state.minutes,
-                  reduceOnly: item.state.reduceOnly,
-                  randomize: item.state.randomize,
-                  status: 'activated',
-                  time: item.state.timestamp || item.time * 1000, // Use timestamp if available
-                });
-              }
-            });
-
-            // Sort by most recent
-            activeTwaps.sort((a, b) => b.time - a.time);
-            
-            // Check for new TWAPs
-            const currentTwapIds = new Set(twapOrders.map(t => t.twapId));
-            const newIds = activeTwaps
-              .filter(t => !currentTwapIds.has(t.twapId))
-              .map(t => t.twapId);
-            
-            if (newIds.length > 0 && currentTwapIds.size > 0) {
-              setNewTwapIds(new Set(newIds));
-              setTimeout(() => setNewTwapIds(new Set()), 2000);
+          // Group by twapId and get the latest status for each
+          const twapLatestStatus = new Map<number, TwapHistoryItem>();
+          
+          twapHistory.forEach(item => {
+            const existing = twapLatestStatus.get(item.twapId);
+            // Keep the most recent entry for each twapId
+            if (!existing || item.time > existing.time) {
+              twapLatestStatus.set(item.twapId, item);
             }
+          });
+          
+          // Filter for active TWAPs only
+          const activeTwaps: TwapOrder[] = [];
+          
+          twapLatestStatus.forEach((item, twapId) => {
+            // Only show TWAPs that are currently "activated"
+            if (item.status.status === 'activated') {
+              activeTwaps.push({
+                // Use unique ID by combining dex prefix with twapId to avoid collisions
+                twapId: isXyz ? twapId + 1000000 : twapId,
+                coin: item.state.coin,
+                side: item.state.side,
+                sz: item.state.sz,
+                executedSz: item.state.executedSz,
+                executedNtl: item.state.executedNtl,
+                minutes: item.state.minutes,
+                reduceOnly: item.state.reduceOnly,
+                randomize: item.state.randomize,
+                status: 'activated',
+                time: item.state.timestamp || item.time * 1000, // Use timestamp if available
+              });
+            }
+          });
+          
+          return activeTwaps;
+        };
 
-            setTwapOrders(activeTwaps);
-          } else {
-            setTwapOrders([]);
-          }
+        let allActiveTwaps: TwapOrder[] = [];
+        
+        if (twapHistoryResponse.ok) {
+          const mainTwapHistory: TwapHistoryItem[] = await twapHistoryResponse.json();
+          allActiveTwaps = [...allActiveTwaps, ...processTwapHistory(mainTwapHistory, false)];
         }
+        
+        if (xyzTwapHistoryResponse.ok) {
+          const xyzTwapHistory: TwapHistoryItem[] = await xyzTwapHistoryResponse.json();
+          allActiveTwaps = [...allActiveTwaps, ...processTwapHistory(xyzTwapHistory, true)];
+        }
+
+        // Sort by most recent
+        allActiveTwaps.sort((a, b) => b.time - a.time);
+        
+        // Check for new TWAPs
+        const currentTwapIds = new Set(twapOrders.map(t => t.twapId));
+        const newIds = allActiveTwaps
+          .filter(t => !currentTwapIds.has(t.twapId))
+          .map(t => t.twapId);
+        
+        if (newIds.length > 0 && currentTwapIds.size > 0) {
+          setNewTwapIds(new Set(newIds));
+          setTimeout(() => setNewTwapIds(new Set()), 2000);
+        }
+
+        setTwapOrders(allActiveTwaps);
 
         // Check for new positions
         const newPositionCoins: string[] = [];
