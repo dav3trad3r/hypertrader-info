@@ -102,14 +102,16 @@ interface TwapHistoryItem {
   twapId: number;
 }
 
-interface TwapSliceFill {
+interface TwapSliceFillResponse {
   twapId: number;
-  coin: string;
-  sz: string;
-  px: string;
-  time: number;
-  side: 'B' | 'A';
-  fee: string;
+  fill: {
+    coin: string;
+    sz: string;
+    px: string;
+    time: number;
+    side: 'B' | 'A';
+    fee: string;
+  };
 }
 
 const HYPERLIQUID_API = "https://api.hyperliquid.xyz/info";
@@ -481,15 +483,15 @@ export function LiveTrades({ address, marketType }: LiveTradesProps) {
         // Parse slice fills to calculate actual executed amounts per twapId
         let sliceFillsByTwapId = new Map<number, { executedSz: number; executedNtl: number }>();
         if (sliceFillsResponse.ok) {
-          const sliceFills: TwapSliceFill[] = await sliceFillsResponse.json();
+          const sliceFills: TwapSliceFillResponse[] = await sliceFillsResponse.json();
           if (Array.isArray(sliceFills)) {
-            sliceFills.forEach(fill => {
-              const existing = sliceFillsByTwapId.get(fill.twapId) || { executedSz: 0, executedNtl: 0 };
-              const sz = parseFloat(fill.sz) || 0;
-              const px = parseFloat(fill.px) || 0;
+            sliceFills.forEach(item => {
+              const existing = sliceFillsByTwapId.get(item.twapId) || { executedSz: 0, executedNtl: 0 };
+              const sz = parseFloat(item.fill.sz) || 0;
+              const px = parseFloat(item.fill.px) || 0;
               existing.executedSz += sz;
               existing.executedNtl += sz * px;
-              sliceFillsByTwapId.set(fill.twapId, existing);
+              sliceFillsByTwapId.set(item.twapId, existing);
             });
           }
         }
