@@ -23,6 +23,8 @@ const Index = () => {
     isLoading,
     isLoadingMonth,
     isSyncing,
+    isRefreshing,
+    lastRefreshed,
     trackingInfo,
     hasMoreHistory,
     hitApiLimit,
@@ -35,7 +37,8 @@ const Index = () => {
     fetchData,
     loadMonth,
     loadedMonths,
-    clearData 
+    clearData,
+    refreshNow,
   } = useHyperliquidData();
 
   // Auto-fetch if address is in URL params
@@ -160,7 +163,7 @@ const Index = () => {
                       {ensName ? `(${address?.slice(0, 6)}...${address?.slice(-4)})` : address}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2 mt-1">
+                  <div className="flex items-center gap-2 mt-1 flex-wrap">
                     <p className="text-xs text-muted-foreground">
                       {rawFills.length.toLocaleString()} trades loaded
                       {trackingInfo && trackingInfo.total_fills > rawFills.length && (
@@ -178,6 +181,17 @@ const Index = () => {
                         Syncing...
                       </span>
                     )}
+                    {/* Auto-refresh indicator */}
+                    <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <span className={`w-1.5 h-1.5 rounded-full ${isRefreshing ? 'bg-primary animate-pulse' : 'bg-profit'}`} />
+                      {isRefreshing ? (
+                        'Refreshing...'
+                      ) : lastRefreshed ? (
+                        <>Auto-refresh: {lastRefreshed.toLocaleTimeString()}</>
+                      ) : (
+                        'Auto-refresh: 30s'
+                      )}
+                    </span>
                   </div>
                 </div>
                 

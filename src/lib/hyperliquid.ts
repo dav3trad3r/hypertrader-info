@@ -337,6 +337,32 @@ export interface FetchFillsResult {
   totalFetched: number;
 }
 
+// Fetch fills since a given timestamp (for polling/refresh)
+export async function fetchFillsSince(
+  address: string, 
+  sinceTime: number
+): Promise<Fill[]> {
+  try {
+    const response = await makeApiRequest({
+      type: "userFillsByTime",
+      user: address,
+      startTime: sinceTime,
+      endTime: Date.now(),
+      aggregateByTime: true,
+    });
+
+    if (!response.ok) {
+      throw new Error(`API error: ${response.status}`);
+    }
+
+    const fills: Fill[] = await response.json();
+    return fills || [];
+  } catch (error) {
+    console.error('Error fetching recent fills:', error);
+    return [];
+  }
+}
+
 // Fetch ALL available fills using proper cursor-based pagination
 // Returns up to 10K fills (the API limit) with indicator if limit was hit
 export async function fetchAllAvailableFills(address: string): Promise<FetchFillsResult> {
@@ -599,7 +625,7 @@ export interface FetchRecentFillsResult {
   hasMoreHistory: boolean;
 }
 
-export async function fetchRecentFills(address: string): Promise<FetchRecentFillsResult> {
+export async function fetchInitialMonthFills(address: string): Promise<FetchRecentFillsResult> {
   const now = new Date();
   const currentYear = now.getFullYear();
   const currentMonth = now.getMonth();

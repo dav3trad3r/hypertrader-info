@@ -2,6 +2,7 @@ import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { 
   fetchAllAvailableFills,
   fetchFillsForMonth, 
+  fetchFillsSince,
   fetchAccountState,
   isValidAddress,
   filterFillsByMarket,
@@ -17,7 +18,6 @@ import {
 } from '@/lib/hyperliquid';
 import { resolveInput, isENSName } from '@/lib/ens';
 import { toast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
@@ -39,6 +39,8 @@ export interface UseHyperliquidDataReturn {
   isLoading: boolean;
   isLoadingMonth: boolean;
   isSyncing: boolean;
+  isRefreshing: boolean;
+  lastRefreshed: Date | null;
   trackingInfo: TrackingInfo | null;
   loadedMonths: Set<string>;
   hasMoreHistory: boolean;
@@ -52,6 +54,7 @@ export interface UseHyperliquidDataReturn {
   fetchData: (addressOrENS: string) => Promise<void>;
   loadMonth: (year: number, month: number) => Promise<void>;
   clearData: () => void;
+  refreshNow: () => Promise<void>;
 }
 
 function getMonthKey(year: number, month: number): string {
@@ -63,6 +66,8 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingMonth, setIsLoadingMonth] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const [trackingInfo, setTrackingInfo] = useState<TrackingInfo | null>(null);
   const [loadedMonths, setLoadedMonths] = useState<Set<string>>(new Set());
   const [hasMoreHistory, setHasMoreHistory] = useState(false);
@@ -75,6 +80,8 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
   const [accountValue, setAccountValue] = useState<number | null>(null);
   
   const abortControllerRef = useRef<AbortController | null>(null);
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastFillTimeRef = useRef<number>(0);
 
   // Preload spot token cache on mount
   useEffect(() => {
@@ -420,6 +427,10 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+    }
     setRawFills([]);
     setError(null);
     setAddress('');
@@ -430,9 +441,80 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
     setHasMoreHistory(false);
     setHitApiLimit(false);
     setIsSyncing(false);
+    setIsRefreshing(false);
+    setLastRefreshed(null);
     setTrackingInfo(null);
     setAccountValue(null);
+    lastFillTimeRef.current = 0;
   }, []);
+
+  // Refresh function to fetch new fills since last known fill
+  const refreshNow = useCallback(async () => {
+    if (!address || isLoading || isRefreshing) return;
+    
+    const sinceTime = lastFillTimeRef.current || Date.now() - 60 * 60 * 1000; // Last hour if no fills
+    
+    setIsRefreshing(true);
+    try {
+      const newFills = await fetchFillsSince(address, sinceTime);
+      
+      if (newFills.length > 0) {
+        setRawFills(prev => {
+          const existingTids = new Set(prev.map(f => f.tid));
+          const uniqueNewFills = newFills.filter(f => !existingTids.has(f.tid));
+          
+          if (uniqueNewFills.length > 0) {
+            console.log(`Auto-refresh: Found ${uniqueNewFills.length} new fills`);
+            
+            // Update last fill time
+            const maxTime = Math.max(...uniqueNewFills.map(f => f.time));
+            if (maxTime > lastFillTimeRef.current) {
+              lastFillTimeRef.current = maxTime;
+            }
+            
+            const combined = [...uniqueNewFills, ...prev];
+            combined.sort((a, b) => b.time - a.time);
+            return combined;
+          }
+          return prev;
+        });
+      }
+      
+      // Also refresh account value
+      const accountState = await fetchAccountState(address);
+      if (accountState?.marginSummary?.accountValue) {
+        setAccountValue(parseFloat(accountState.marginSummary.accountValue));
+      }
+      
+      setLastRefreshed(new Date());
+    } catch (err) {
+      console.error('Error refreshing fills:', err);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [address, isLoading, isRefreshing]);
+
+  // Set up auto-refresh polling when we have an address
+  useEffect(() => {
+    if (address && rawFills.length > 0) {
+      // Set the last fill time for efficient polling
+      if (rawFills.length > 0 && lastFillTimeRef.current === 0) {
+        lastFillTimeRef.current = Math.max(...rawFills.map(f => f.time));
+      }
+      
+      // Start polling every 30 seconds
+      pollIntervalRef.current = setInterval(() => {
+        refreshNow();
+      }, 30000);
+      
+      return () => {
+        if (pollIntervalRef.current) {
+          clearInterval(pollIntervalRef.current);
+          pollIntervalRef.current = null;
+        }
+      };
+    }
+  }, [address, rawFills.length, refreshNow]);
 
   return {
     data,
@@ -441,6 +523,8 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
     isLoading,
     isLoadingMonth,
     isSyncing,
+    isRefreshing,
+    lastRefreshed,
     trackingInfo,
     loadedMonths,
     hasMoreHistory,
@@ -454,5 +538,6 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
     fetchData,
     loadMonth,
     clearData,
+    refreshNow,
   };
 }
