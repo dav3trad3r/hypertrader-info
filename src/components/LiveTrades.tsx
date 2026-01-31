@@ -578,15 +578,23 @@ export function LiveTrades({ address, marketType }: LiveTradesProps) {
         };
 
         let allActiveTwaps: TwapOrder[] = [];
+        const seenTwapIds = new Set<number>();
         
         if (twapHistoryResponse.ok) {
           const mainTwapHistory: TwapHistoryItem[] = await twapHistoryResponse.json();
-          allActiveTwaps = [...allActiveTwaps, ...processTwapHistory(mainTwapHistory, false)];
+          const mainTwaps = processTwapHistory(mainTwapHistory, false);
+          mainTwaps.forEach(t => {
+            seenTwapIds.add(t.twapId);
+            allActiveTwaps.push(t);
+          });
         }
         
         if (xyzTwapHistoryResponse.ok) {
           const xyzTwapHistory: TwapHistoryItem[] = await xyzTwapHistoryResponse.json();
-          allActiveTwaps = [...allActiveTwaps, ...processTwapHistory(xyzTwapHistory, true)];
+          // Only include TWAPs that are actual HIP-3 assets (xyz: prefix) AND not already seen
+          const xyzTwaps = processTwapHistory(xyzTwapHistory, true)
+            .filter(t => t.coin.startsWith('xyz:') && !seenTwapIds.has(t.twapId - 1000000));
+          allActiveTwaps = [...allActiveTwaps, ...xyzTwaps];
         }
 
         // Sort by most recent
