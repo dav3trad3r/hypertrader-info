@@ -1,20 +1,9 @@
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { fetchTradingData, filterFillsByMarket, processDailyPnL, calculateSummary, type MarketType, type DailyPnL, type TradingSummary } from '@/lib/hyperliquid';
-import { cn } from '@/lib/utils';
+import { cn, formatCurrency } from '@/lib/utils';
 import { TrendingUp, TrendingDown, Trophy, Target, Calendar } from 'lucide-react';
 import { useMemo } from 'react';
-
-function formatCurrency(value: number): string {
-  const absValue = Math.abs(value);
-  if (absValue >= 1000000) {
-    return `$${(value / 1000000).toFixed(2)}M`;
-  }
-  if (absValue >= 1000) {
-    return `$${(value / 1000).toFixed(2)}K`;
-  }
-  return `$${value.toFixed(2)}`;
-}
 
 function formatAddress(address: string): string {
   return `${address.slice(0, 6)}...${address.slice(-4)}`;

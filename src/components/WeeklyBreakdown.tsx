@@ -1,24 +1,10 @@
 import { useMemo } from 'react';
 import { type WeeklyPnL } from '@/lib/hyperliquid';
-import { cn } from '@/lib/utils';
+import { cn, formatCurrency } from '@/lib/utils';
 
 interface WeeklyBreakdownProps {
   weeklyPnL: WeeklyPnL[];
   limit?: number;
-}
-
-function formatCurrency(value: number): string {
-  const absValue = Math.abs(value);
-  if (absValue >= 1000000000) {
-    return `$${(value / 1000000000).toFixed(2)}B`;
-  }
-  if (absValue >= 1000000) {
-    return `$${(value / 1000000).toFixed(2)}M`;
-  }
-  if (absValue >= 1000) {
-    return `$${(value / 1000).toFixed(1)}K`;
-  }
-  return `$${value.toFixed(2)}`;
 }
 
 export function WeeklyBreakdown({ weeklyPnL, limit = 8 }: WeeklyBreakdownProps) {

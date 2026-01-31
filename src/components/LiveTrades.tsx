@@ -1,6 +1,6 @@
 import { useState, useEffect, memo } from 'react';
 import { Activity, ArrowUpRight, ArrowDownRight, Zap, Coins } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, formatCurrency, formatSize } from '@/lib/utils';
 
 interface LiveTradesProps {
   address: string;
@@ -59,25 +59,6 @@ interface SpotClearinghouseState {
 
 const HYPERLIQUID_API = "https://api.hyperliquid.xyz/info";
 const POLL_INTERVAL = 5000;
-
-function formatCurrency(value: number): string {
-  const absValue = Math.abs(value);
-  if (absValue >= 1000) {
-    return `$${(value / 1000).toFixed(2)}K`;
-  }
-  return `$${value.toFixed(2)}`;
-}
-
-function formatSize(value: number): string {
-  const absValue = Math.abs(value);
-  if (absValue >= 1000000) {
-    return `${(value / 1000000).toFixed(2)}M`;
-  }
-  if (absValue >= 1000) {
-    return `${(value / 1000).toFixed(2)}K`;
-  }
-  return value.toFixed(4);
-}
 
 const PerpPositionItem = memo(function PerpPositionItem({ 
   position,

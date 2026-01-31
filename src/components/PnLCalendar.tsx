@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { type DailyPnL, type WeeklyPnL, type Fill } from '@/lib/hyperliquid';
 import { DayTradeBreakdown } from '@/components/DayTradeBreakdown';
-import { cn } from '@/lib/utils';
+import { cn, formatCurrency } from '@/lib/utils';
 
 interface PnLCalendarProps {
   dailyPnL: DailyPnL[];
@@ -19,17 +19,6 @@ const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December'
 ];
-
-function formatCurrency(value: number): string {
-  const absValue = Math.abs(value);
-  if (absValue >= 1000000) {
-    return `${(value / 1000000).toFixed(2)}M`;
-  }
-  if (absValue >= 1000) {
-    return `${(value / 1000).toFixed(1)}K`;
-  }
-  return value.toFixed(2);
-}
 
 function getMonthKey(year: number, month: number): string {
   return `${year}-${String(month + 1).padStart(2, '0')}`;
@@ -171,7 +160,7 @@ export function PnLCalendar({
               "text-base sm:text-lg font-mono font-semibold",
               monthlyTotal.total >= 0 ? "text-profit" : "text-loss"
             )}>
-              {monthlyTotal.total >= 0 ? '+' : ''}${formatCurrency(monthlyTotal.total)}
+              {monthlyTotal.total >= 0 ? '+' : ''}{formatCurrency(monthlyTotal.total)}
             </span>
             <span className="text-xs sm:text-sm text-muted-foreground">
               {monthlyTotal.trades} trades
@@ -302,7 +291,7 @@ export function PnLCalendar({
                         "text-lg font-mono font-bold",
                         isProfitable ? "text-profit" : "text-loss"
                       )}>
-                        {isProfitable ? '+' : ''}${formatCurrency(day.pnl)}
+                        {isProfitable ? '+' : ''}{formatCurrency(day.pnl)}
                       </div>
                       <div className="grid grid-cols-2 gap-2 mt-2 text-xs">
                         <div>
@@ -317,7 +306,7 @@ export function PnLCalendar({
                         </div>
                         <div className="col-span-2">
                           <span className="text-muted-foreground">Volume:</span>
-                          <span className="ml-1 font-mono">${formatCurrency(day.volume)}</span>
+                          <span className="ml-1 font-mono">{formatCurrency(day.volume)}</span>
                         </div>
                       </div>
                       <div className="mt-2 pt-2 border-t border-border text-[10px] text-primary text-center">

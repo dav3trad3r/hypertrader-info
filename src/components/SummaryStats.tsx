@@ -1,36 +1,9 @@
-import { TrendingUp, TrendingDown, Activity, DollarSign, Target, BarChart3, Calendar, Percent } from 'lucide-react';
+import { TrendingUp, TrendingDown, DollarSign, Target, BarChart3, Calendar } from 'lucide-react';
 import { type TradingSummary } from '@/lib/hyperliquid';
-import { cn } from '@/lib/utils';
+import { cn, formatCurrency, formatVolume } from '@/lib/utils';
 
 interface SummaryStatsProps {
   summary: TradingSummary;
-}
-
-function formatCurrency(value: number): string {
-  const absValue = Math.abs(value);
-  if (absValue >= 1000000000) {
-    return `$${(value / 1000000000).toFixed(2)}B`;
-  }
-  if (absValue >= 1000000) {
-    return `$${(value / 1000000).toFixed(2)}M`;
-  }
-  if (absValue >= 1000) {
-    return `$${(value / 1000).toFixed(1)}K`;
-  }
-  return `$${value.toFixed(2)}`;
-}
-
-function formatVolume(value: number): string {
-  if (value >= 1000000000) {
-    return `$${(value / 1000000000).toFixed(2)}B`;
-  }
-  if (value >= 1000000) {
-    return `$${(value / 1000000).toFixed(2)}M`;
-  }
-  if (value >= 1000) {
-    return `$${(value / 1000).toFixed(1)}K`;
-  }
-  return `$${value.toFixed(2)}`;
 }
 
 interface StatCardProps {

@@ -1,38 +1,11 @@
 import { useMemo } from 'react';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { type AssetPerformance } from '@/lib/hyperliquid';
-import { cn } from '@/lib/utils';
+import { cn, formatCurrency, formatVolume } from '@/lib/utils';
 
 interface TopAssetsProps {
   assets: AssetPerformance[];
   limit?: number;
-}
-
-function formatCurrency(value: number): string {
-  const absValue = Math.abs(value);
-  if (absValue >= 1000000000) {
-    return `$${(value / 1000000000).toFixed(2)}B`;
-  }
-  if (absValue >= 1000000) {
-    return `$${(value / 1000000).toFixed(2)}M`;
-  }
-  if (absValue >= 1000) {
-    return `$${(value / 1000).toFixed(1)}K`;
-  }
-  return `$${value.toFixed(2)}`;
-}
-
-function formatVolume(value: number): string {
-  if (value >= 1000000000) {
-    return `$${(value / 1000000000).toFixed(2)}B`;
-  }
-  if (value >= 1000000) {
-    return `$${(value / 1000000).toFixed(1)}M`;
-  }
-  if (value >= 1000) {
-    return `$${(value / 1000).toFixed(0)}K`;
-  }
-  return `$${value.toFixed(0)}`;
 }
 
 // Asset colors for visual distinction

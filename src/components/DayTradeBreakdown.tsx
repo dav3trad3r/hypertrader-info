@@ -1,7 +1,7 @@
 import { useMemo, useState, memo } from 'react';
 import { X, ArrowUpRight, ArrowDownRight, ChevronDown } from 'lucide-react';
 import { type Fill } from '@/lib/hyperliquid';
-import { cn } from '@/lib/utils';
+import { cn, formatCurrency } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
 interface DayTradeBreakdownProps {
@@ -11,17 +11,6 @@ interface DayTradeBreakdownProps {
 }
 
 const INITIAL_DISPLAY_COUNT = 50;
-
-function formatCurrency(value: number): string {
-  const absValue = Math.abs(value);
-  if (absValue >= 1000000) {
-    return `$${(value / 1000000).toFixed(2)}M`;
-  }
-  if (absValue >= 1000) {
-    return `$${(value / 1000).toFixed(2)}K`;
-  }
-  return `$${value.toFixed(2)}`;
-}
 
 function formatTime(timestamp: number): string {
   return new Date(timestamp).toLocaleTimeString('en-US', {
