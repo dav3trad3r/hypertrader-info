@@ -73,30 +73,36 @@ export type Database = {
       }
       tracked_addresses: {
         Row: {
+          access_count: number | null
           address: string
           first_seen_at: string
           has_gap: boolean | null
           is_active: boolean | null
+          last_accessed_at: string | null
           last_synced_at: string | null
           last_synced_tid: number | null
           oldest_tid: number | null
           total_fills: number | null
         }
         Insert: {
+          access_count?: number | null
           address: string
           first_seen_at?: string
           has_gap?: boolean | null
           is_active?: boolean | null
+          last_accessed_at?: string | null
           last_synced_at?: string | null
           last_synced_tid?: number | null
           oldest_tid?: number | null
           total_fills?: number | null
         }
         Update: {
+          access_count?: number | null
           address?: string
           first_seen_at?: string
           has_gap?: boolean | null
           is_active?: boolean | null
+          last_accessed_at?: string | null
           last_synced_at?: string | null
           last_synced_tid?: number | null
           oldest_tid?: number | null
