@@ -1,7 +1,8 @@
 import { useState, useEffect, memo } from 'react';
-import { Activity, ArrowUpRight, ArrowDownRight, Zap, Coins, Clock, TrendingUp, TrendingDown, AlertTriangle } from 'lucide-react';
+import { Activity, ArrowUpRight, ArrowDownRight, Zap, Clock, TrendingUp, TrendingDown, AlertTriangle } from 'lucide-react';
 import { cn, formatCurrency, formatSize } from '@/lib/utils';
 import { Progress } from '@/components/ui/progress';
+import { CoinIcon } from '@/components/CoinIcon';
 
 interface LiveTradesProps {
   address: string;
@@ -160,15 +161,18 @@ const PerpPositionItem = memo(function PerpPositionItem({
     >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className={cn(
-            "w-8 h-8 rounded-lg flex items-center justify-center",
-            isLong ? "bg-profit/20" : "bg-loss/20"
-          )}>
-            {isLong ? (
-              <ArrowUpRight className="w-4 h-4 text-profit" />
-            ) : (
-              <ArrowDownRight className="w-4 h-4 text-loss" />
-            )}
+          <div className="relative">
+            <CoinIcon coin={position.coin} size="md" />
+            <div className={cn(
+              "absolute -bottom-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center",
+              isLong ? "bg-profit" : "bg-loss"
+            )}>
+              {isLong ? (
+                <ArrowUpRight className="w-2.5 h-2.5 text-white" />
+              ) : (
+                <ArrowDownRight className="w-2.5 h-2.5 text-white" />
+              )}
+            </div>
           </div>
           
           <div>
@@ -270,9 +274,7 @@ const SpotPositionItem = memo(function SpotPositionItem({
       )}
     >
       <div className="flex items-center gap-3">
-        <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-primary/20">
-          <Coins className="w-4 h-4 text-primary" />
-        </div>
+          <CoinIcon coin={position.coin} size="md" />
         
         <div>
           <div className="flex items-center gap-2">
@@ -349,11 +351,13 @@ const TwapOrderItem = memo(function TwapOrderItem({
     >
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-3">
-          <div className={cn(
-            "w-8 h-8 rounded-lg flex items-center justify-center",
-            isBuy ? "bg-profit/20" : "bg-loss/20"
-          )}>
-            <Clock className="w-4 h-4 text-primary" />
+          <div className="relative">
+            <CoinIcon coin={displayCoin} size="md" />
+            <div className={cn(
+              "absolute -bottom-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center bg-primary"
+            )}>
+              <Clock className="w-2.5 h-2.5 text-white" />
+            </div>
           </div>
           
           <div>

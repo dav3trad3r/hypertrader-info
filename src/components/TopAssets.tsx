@@ -2,34 +2,13 @@ import { useMemo } from 'react';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { type AssetPerformance } from '@/lib/hyperliquid';
 import { cn, formatCurrency, formatVolume } from '@/lib/utils';
+import { CoinIcon } from '@/components/CoinIcon';
 
 interface TopAssetsProps {
   assets: AssetPerformance[];
   limit?: number;
 }
 
-// Asset colors for visual distinction
-const ASSET_COLORS: Record<string, string> = {
-  BTC: 'bg-orange-500',
-  ETH: 'bg-blue-500',
-  SOL: 'bg-purple-500',
-  AVAX: 'bg-red-500',
-  ARB: 'bg-sky-500',
-  OP: 'bg-red-600',
-  MATIC: 'bg-violet-500',
-  DOGE: 'bg-yellow-500',
-  LINK: 'bg-blue-600',
-  UNI: 'bg-pink-500',
-  AAVE: 'bg-cyan-500',
-  CRV: 'bg-emerald-500',
-  MKR: 'bg-teal-500',
-  SNX: 'bg-indigo-500',
-  COMP: 'bg-green-500',
-};
-
-function getAssetColor(coin: string): string {
-  return ASSET_COLORS[coin.toUpperCase()] || 'bg-primary';
-}
 
 export function TopAssets({ assets, limit = 10 }: TopAssetsProps) {
   const displayedAssets = useMemo(() => {
@@ -71,12 +50,7 @@ export function TopAssets({ assets, limit = 10 }: TopAssetsProps) {
                 </span>
                 
                 {/* Asset Icon */}
-                <div className={cn(
-                  "w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white",
-                  getAssetColor(asset.coin)
-                )}>
-                  {asset.coin.substring(0, 2).toUpperCase()}
-                </div>
+                <CoinIcon coin={asset.coin} size="md" />
                 
                 {/* Asset Info */}
                 <div className="flex-1 min-w-0">
