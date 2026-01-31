@@ -1,22 +1,15 @@
-import { Activity, TrendingUp, Calendar, Search } from 'lucide-react';
+import blobGreen from '@/assets/blob_green.gif';
 
 export function EmptyState() {
   return (
     <div className="flex flex-col items-center justify-center py-20 gap-8">
-      {/* Animated Icon Grid */}
-      <div className="grid grid-cols-2 gap-4">
-        <div className="p-6 rounded-xl bg-card border border-border animate-fade-in" style={{ animationDelay: '0ms' }}>
-          <Calendar className="w-8 h-8 text-primary" />
-        </div>
-        <div className="p-6 rounded-xl bg-card border border-border animate-fade-in" style={{ animationDelay: '100ms' }}>
-          <TrendingUp className="w-8 h-8 text-profit" />
-        </div>
-        <div className="p-6 rounded-xl bg-card border border-border animate-fade-in" style={{ animationDelay: '200ms' }}>
-          <Activity className="w-8 h-8 text-muted-foreground" />
-        </div>
-        <div className="p-6 rounded-xl bg-card border border-border animate-fade-in" style={{ animationDelay: '300ms' }}>
-          <Search className="w-8 h-8 text-muted-foreground" />
-        </div>
+      {/* Hyperliquid Blob Animation */}
+      <div className="relative w-40 h-40 animate-fade-in">
+        <img 
+          src={blobGreen} 
+          alt="Hyperliquid" 
+          className="w-full h-full object-contain"
+        />
       </div>
 
       <div className="text-center max-w-md">
