@@ -14,7 +14,96 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      fills: {
+        Row: {
+          closed_pnl: number | null
+          coin: string
+          created_at: string
+          crossed: boolean | null
+          dir: string | null
+          fee: number | null
+          fee_token: string | null
+          hash: string | null
+          oid: number | null
+          px: number
+          side: string
+          start_position: number | null
+          sz: number
+          tid: number
+          time: number
+          user_address: string
+        }
+        Insert: {
+          closed_pnl?: number | null
+          coin: string
+          created_at?: string
+          crossed?: boolean | null
+          dir?: string | null
+          fee?: number | null
+          fee_token?: string | null
+          hash?: string | null
+          oid?: number | null
+          px: number
+          side: string
+          start_position?: number | null
+          sz: number
+          tid: number
+          time: number
+          user_address: string
+        }
+        Update: {
+          closed_pnl?: number | null
+          coin?: string
+          created_at?: string
+          crossed?: boolean | null
+          dir?: string | null
+          fee?: number | null
+          fee_token?: string | null
+          hash?: string | null
+          oid?: number | null
+          px?: number
+          side?: string
+          start_position?: number | null
+          sz?: number
+          tid?: number
+          time?: number
+          user_address?: string
+        }
+        Relationships: []
+      }
+      tracked_addresses: {
+        Row: {
+          address: string
+          first_seen_at: string
+          has_gap: boolean | null
+          is_active: boolean | null
+          last_synced_at: string | null
+          last_synced_tid: number | null
+          oldest_tid: number | null
+          total_fills: number | null
+        }
+        Insert: {
+          address: string
+          first_seen_at?: string
+          has_gap?: boolean | null
+          is_active?: boolean | null
+          last_synced_at?: string | null
+          last_synced_tid?: number | null
+          oldest_tid?: number | null
+          total_fills?: number | null
+        }
+        Update: {
+          address?: string
+          first_seen_at?: string
+          has_gap?: boolean | null
+          is_active?: boolean | null
+          last_synced_at?: string | null
+          last_synced_tid?: number | null
+          oldest_tid?: number | null
+          total_fills?: number | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

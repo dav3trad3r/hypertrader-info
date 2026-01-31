@@ -16,6 +16,20 @@ import {
 } from '@/lib/hyperliquid';
 import { resolveInput, isENSName } from '@/lib/ens';
 import { toast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
+interface TrackingInfo {
+  address: string;
+  first_seen_at: string;
+  last_synced_at: string;
+  total_fills: number;
+  has_gap: boolean;
+  oldest_tid: number;
+  last_synced_tid: number;
+}
 
 export interface UseHyperliquidDataReturn {
   data: UserTradingData | null;
@@ -23,6 +37,8 @@ export interface UseHyperliquidDataReturn {
   rawFills: Fill[];
   isLoading: boolean;
   isLoadingMonth: boolean;
+  isSyncing: boolean;
+  trackingInfo: TrackingInfo | null;
   loadedMonths: Set<string>;
   hasMoreHistory: boolean;
   hitApiLimit: boolean;
@@ -45,6 +61,8 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
   const [rawFills, setRawFills] = useState<Fill[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingMonth, setIsLoadingMonth] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [trackingInfo, setTrackingInfo] = useState<TrackingInfo | null>(null);
   const [loadedMonths, setLoadedMonths] = useState<Set<string>>(new Set());
   const [hasMoreHistory, setHasMoreHistory] = useState(false);
   const [hitApiLimit, setHitApiLimit] = useState(false);
@@ -198,6 +216,7 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
     setHasMoreHistory(false);
     setHitApiLimit(false);
     setEnsName(null);
+    setTrackingInfo(null);
     
     try {
       // Resolve ENS name or validate address
@@ -231,37 +250,142 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
       setAddress(resolvedAddress);
       setEnsName(resolvedENS);
       
-      // Fetch ALL available fills (up to 10K API limit)
-      const result = await fetchAllAvailableFills(resolvedAddress);
+      // Step 1: Trigger sync to Supabase (runs in background)
+      setIsSyncing(true);
+      const syncPromise = fetch(`${SUPABASE_URL}/functions/v1/sync-fills`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+        },
+        body: JSON.stringify({ address: resolvedAddress })
+      }).then(async (res) => {
+        if (res.ok) {
+          const syncResult = await res.json();
+          console.log('Sync result:', syncResult);
+          return syncResult;
+        }
+        console.warn('Sync failed, continuing with API data');
+        return null;
+      }).catch(err => {
+        console.warn('Sync error:', err);
+        return null;
+      }).finally(() => {
+        setIsSyncing(false);
+      });
       
-      if (result.fills.length === 0) {
-        setError('No trading history found for this address');
-        setRawFills([]);
+      // Step 2: Simultaneously fetch from Hyperliquid API for immediate display
+      const apiResult = await fetchAllAvailableFills(resolvedAddress);
+      
+      if (apiResult.fills.length === 0) {
+        // Check if we have historical data in Supabase
+        const dbRes = await fetch(
+          `${SUPABASE_URL}/functions/v1/get-fills?address=${resolvedAddress}`,
+          {
+            headers: { 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` }
+          }
+        );
+        
+        if (dbRes.ok) {
+          const dbData = await dbRes.json();
+          if (dbData.fills && dbData.fills.length > 0) {
+            setRawFills(dbData.fills);
+            setTrackingInfo(dbData.tracking);
+            
+            const monthsWithData = new Set<string>();
+            dbData.fills.forEach((fill: Fill) => {
+              const date = new Date(fill.time);
+              monthsWithData.add(getMonthKey(date.getFullYear(), date.getMonth()));
+            });
+            setLoadedMonths(monthsWithData);
+            
+            toast({
+              title: "Historical data loaded",
+              description: `Loaded ${dbData.fills.length.toLocaleString()} trades from history.`,
+              duration: 3000,
+            });
+          } else {
+            setError('No trading history found for this address');
+            setRawFills([]);
+          }
+        } else {
+          setError('No trading history found for this address');
+          setRawFills([]);
+        }
       } else {
-        setRawFills(result.fills);
-        setHitApiLimit(result.hitApiLimit);
+        setRawFills(apiResult.fills);
+        setHitApiLimit(apiResult.hitApiLimit);
         
         // Mark months that have data as loaded
-        // These are the months covered by the initial 10K fetch
         const monthsWithData = new Set<string>();
-        result.fills.forEach(fill => {
+        apiResult.fills.forEach(fill => {
           const date = new Date(fill.time);
           monthsWithData.add(getMonthKey(date.getFullYear(), date.getMonth()));
         });
         setLoadedMonths(monthsWithData);
         
+        // Wait for sync to complete, then check for additional historical data
+        syncPromise.then(async () => {
+          try {
+            const dbRes = await fetch(
+              `${SUPABASE_URL}/functions/v1/get-fills?address=${resolvedAddress}`,
+              {
+                headers: { 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` }
+              }
+            );
+            
+            if (dbRes.ok) {
+              const dbData = await dbRes.json();
+              setTrackingInfo(dbData.tracking);
+              
+              // If DB has more fills than API returned, merge them
+              if (dbData.fills && dbData.fills.length > apiResult.fills.length) {
+                const existingTids = new Set(apiResult.fills.map(f => f.tid));
+                const historicalFills = dbData.fills.filter((f: Fill) => !existingTids.has(f.tid));
+                
+                if (historicalFills.length > 0) {
+                  setRawFills(prev => {
+                    const combined = [...prev, ...historicalFills];
+                    combined.sort((a, b) => b.time - a.time);
+                    return combined;
+                  });
+                  
+                  // Update loaded months with historical data
+                  const newMonths = new Set<string>();
+                  historicalFills.forEach((fill: Fill) => {
+                    const date = new Date(fill.time);
+                    newMonths.add(getMonthKey(date.getFullYear(), date.getMonth()));
+                  });
+                  
+                  if (newMonths.size > 0) {
+                    setLoadedMonths(prev => new Set([...prev, ...newMonths]));
+                    
+                    toast({
+                      title: "Historical data merged",
+                      description: `Found ${historicalFills.length.toLocaleString()} additional trades from previous syncs.`,
+                      duration: 3000,
+                    });
+                  }
+                }
+              }
+            }
+          } catch (err) {
+            console.warn('Failed to fetch historical data:', err);
+          }
+        });
+        
         // Show appropriate toast
-        if (result.hitApiLimit) {
+        if (apiResult.hitApiLimit) {
           toast({
             title: "API limit reached",
-            description: `Loaded ${result.totalFetched.toLocaleString()} trades. Navigate to older months to load more history.`,
+            description: `Loaded ${apiResult.totalFetched.toLocaleString()} trades. Historical data syncing in background.`,
             variant: "default",
             duration: 5000,
           });
         } else {
           toast({
             title: "Trades loaded",
-            description: `Successfully loaded ${result.totalFetched.toLocaleString()} trades.`,
+            description: `Successfully loaded ${apiResult.totalFetched.toLocaleString()} trades.`,
             duration: 3000,
           });
         }
@@ -288,6 +412,8 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
     attemptedMonths.current = new Set();
     setHasMoreHistory(false);
     setHitApiLimit(false);
+    setIsSyncing(false);
+    setTrackingInfo(null);
   }, []);
 
   return {
@@ -296,6 +422,8 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
     rawFills,
     isLoading,
     isLoadingMonth,
+    isSyncing,
+    trackingInfo,
     loadedMonths,
     hasMoreHistory,
     hitApiLimit,
