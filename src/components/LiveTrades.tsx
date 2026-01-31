@@ -297,7 +297,9 @@ const TwapOrderItem = memo(function TwapOrderItem({
   const totalSize = parseFloat(twap.sz);
   const executedSize = parseFloat(twap.executedSz);
   const executedNtl = parseFloat(twap.executedNtl);
-  const progress = totalSize > 0 ? (executedSize / totalSize) * 100 : 0;
+  // Hyperliquid's `twapHistory` often reports executedSz=0.0 for active TWAPs.
+  // To ensure the UI shows progress, fall back to a time-elapsed progress bar.
+  const sizeProgress = totalSize > 0 ? (executedSize / totalSize) * 100 : 0;
   const avgPrice = executedSize > 0 ? executedNtl / executedSize : 0;
   const isBuy = twap.side === 'B';
   
@@ -306,6 +308,8 @@ const TwapOrderItem = memo(function TwapOrderItem({
   const totalDuration = twap.minutes * 60 * 1000;
   const timeProgress = Math.min((elapsed / totalDuration) * 100, 100);
   const remainingMinutes = Math.max(0, Math.ceil((totalDuration - elapsed) / 60000));
+
+  const progressForBar = sizeProgress > 0 ? sizeProgress : timeProgress;
 
   // Clean up coin name (remove @ prefix for spot)
   const displayCoin = twap.coin.startsWith('@') ? twap.coin.slice(1) : twap.coin;
@@ -379,11 +383,16 @@ const TwapOrderItem = memo(function TwapOrderItem({
       {/* Progress bar */}
       <div className="space-y-1">
         <Progress 
-          value={progress} 
+          value={Number.isFinite(progressForBar) ? progressForBar : 0} 
           className="h-2"
         />
         <div className="flex justify-between text-[10px] text-muted-foreground">
-          <span>{progress.toFixed(1)}% filled</span>
+          <span>
+            {Number.isFinite(sizeProgress) ? sizeProgress.toFixed(1) : '0.0'}% filled
+            {sizeProgress <= 0 && Number.isFinite(timeProgress)
+              ? ` • ${timeProgress.toFixed(0)}% elapsed`
+              : ''}
+          </span>
           <span>{twap.minutes}min TWAP{twap.randomize ? ' (randomized)' : ''}</span>
         </div>
       </div>
