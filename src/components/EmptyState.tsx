@@ -47,7 +47,7 @@ export function EmptyState() {
 
       {/* Example addresses hint */}
       <div className="text-center">
-        <p className="text-xs text-muted-foreground mb-2">Try searching for any Hyperliquid trader address</p>
+        <p className="text-xs text-muted-foreground mb-2">Try searching for any Hyperliquid trader address or ENS name</p>
         <code className="text-xs font-mono text-primary/80 bg-primary/10 px-3 py-1.5 rounded">
           0x...
         </code>
