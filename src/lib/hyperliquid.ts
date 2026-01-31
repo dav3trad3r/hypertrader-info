@@ -142,6 +142,23 @@ export interface WeeklyPnL {
   volume: number;
 }
 
+// --- Date helpers ---
+// We intentionally use *local time* for day/week bucketing so the calendar matches
+// what the user considers "today".
+export function formatLocalDateKey(input: Date | number): string {
+  const d = typeof input === 'number' ? new Date(input) : input;
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+export function parseLocalDateKey(dateKey: string): Date {
+  const [y, m, d] = dateKey.split('-').map(Number);
+  // Constructing via (y, m-1, d) ensures this is interpreted in local time.
+  return new Date(y, (m || 1) - 1, d || 1);
+}
+
 export interface AssetPerformance {
   coin: string;
   pnl: number;
@@ -622,7 +639,7 @@ export function processDailyPnL(fills: Fill[]): DailyPnL[] {
   const dailyMap = new Map<string, DailyPnL>();
   
   fills.forEach(fill => {
-    const date = new Date(fill.time).toISOString().split('T')[0];
+    const date = formatLocalDateKey(fill.time);
     const pnl = parseFloat(fill.closedPnl) || 0;
     const volume = parseFloat(fill.sz) * parseFloat(fill.px);
     const fee = parseFloat(fill.fee) || 0;
@@ -650,7 +667,7 @@ export function processDailyPnL(fills: Fill[]): DailyPnL[] {
   });
   
   return Array.from(dailyMap.values()).sort((a, b) => 
-    new Date(b.date).getTime() - new Date(a.date).getTime()
+    parseLocalDateKey(b.date).getTime() - parseLocalDateKey(a.date).getTime()
   );
 }
 
@@ -659,18 +676,18 @@ export function processWeeklyPnL(dailyPnL: DailyPnL[]): WeeklyPnL[] {
   const weeklyMap = new Map<string, WeeklyPnL>();
   
   dailyPnL.forEach(day => {
-    const date = new Date(day.date);
+    const date = parseLocalDateKey(day.date);
     const weekStart = new Date(date);
     weekStart.setDate(date.getDate() - date.getDay()); // Sunday
     const weekEnd = new Date(weekStart);
     weekEnd.setDate(weekStart.getDate() + 6); // Saturday
     
-    const weekKey = weekStart.toISOString().split('T')[0];
+    const weekKey = formatLocalDateKey(weekStart);
     
     if (!weeklyMap.has(weekKey)) {
       weeklyMap.set(weekKey, {
         weekStart: weekKey,
-        weekEnd: weekEnd.toISOString().split('T')[0],
+        weekEnd: formatLocalDateKey(weekEnd),
         pnl: 0,
         trades: 0,
         volume: 0,
@@ -684,7 +701,7 @@ export function processWeeklyPnL(dailyPnL: DailyPnL[]): WeeklyPnL[] {
   });
   
   return Array.from(weeklyMap.values()).sort((a, b) => 
-    new Date(b.weekStart).getTime() - new Date(a.weekStart).getTime()
+    parseLocalDateKey(b.weekStart).getTime() - parseLocalDateKey(a.weekStart).getTime()
   );
 }
 
