@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useHyperliquidData } from '@/hooks/useHyperliquidData';
 import { Header } from '@/components/Header';
@@ -14,6 +14,36 @@ import { MarketFilter } from '@/components/MarketFilter';
 import { SharePnLCard } from '@/components/SharePnLCard';
 import { LiveTrades } from '@/components/LiveTrades';
 import { ShareProfileButton } from '@/components/ShareProfileButton';
+
+// Refresh indicator with live countdown
+function RefreshIndicator({ isRefreshing, lastRefreshed }: { isRefreshing: boolean; lastRefreshed: Date | null }) {
+  const [secondsAgo, setSecondsAgo] = useState(0);
+
+  useEffect(() => {
+    if (!lastRefreshed) return;
+    
+    const update = () => {
+      setSecondsAgo(Math.floor((Date.now() - lastRefreshed.getTime()) / 1000));
+    };
+    
+    update();
+    const interval = setInterval(update, 1000);
+    return () => clearInterval(interval);
+  }, [lastRefreshed]);
+
+  return (
+    <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+      <span className={`w-1.5 h-1.5 rounded-full ${isRefreshing ? 'bg-primary animate-pulse' : 'bg-profit'}`} />
+      {isRefreshing ? (
+        'Refreshing...'
+      ) : lastRefreshed ? (
+        `${secondsAgo}s ago`
+      ) : (
+        'Auto-refresh: 30s'
+      )}
+    </span>
+  );
+}
 
 const Index = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -182,16 +212,7 @@ const Index = () => {
                       </span>
                     )}
                     {/* Auto-refresh indicator */}
-                    <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <span className={`w-1.5 h-1.5 rounded-full ${isRefreshing ? 'bg-primary animate-pulse' : 'bg-profit'}`} />
-                      {isRefreshing ? (
-                        'Refreshing...'
-                      ) : lastRefreshed ? (
-                        <>Auto-refresh: {lastRefreshed.toLocaleTimeString()}</>
-                      ) : (
-                        'Auto-refresh: 30s'
-                      )}
-                    </span>
+                    <RefreshIndicator isRefreshing={isRefreshing} lastRefreshed={lastRefreshed} />
                   </div>
                 </div>
                 
