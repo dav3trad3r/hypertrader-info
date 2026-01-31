@@ -186,7 +186,7 @@ const PerpPositionItem = memo(function PerpPositionItem({
               "font-mono text-sm font-semibold",
               isProfitable ? "text-profit" : "text-loss"
             )}>
-              {isProfitable ? '+' : ''}{formatCurrency(unrealizedPnl)}
+              {isProfitable ? '+' : ''}${unrealizedPnl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
             <span className={cn(
               "text-xs font-mono",
@@ -196,7 +196,7 @@ const PerpPositionItem = memo(function PerpPositionItem({
             </span>
           </div>
           <span className="text-xs text-muted-foreground">
-            {formatCurrency(positionValue)} value
+            ${positionValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} value
           </span>
         </div>
       </div>
@@ -213,7 +213,7 @@ const PerpPositionItem = memo(function PerpPositionItem({
                 "font-mono",
                 fundingPositive ? "text-profit" : "text-loss"
               )}>
-                {fundingPositive ? '+' : ''}{formatCurrency(fundingPnlImpact)}
+                {fundingPositive ? '+' : ''}${fundingPnlImpact.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
             </div>
           )}
