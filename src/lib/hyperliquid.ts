@@ -176,25 +176,64 @@ export interface AccountState {
   withdrawable: string;
 }
 
-// Fetch current account state (balance)
+// Fetch current account state (balance) from both main and xyz dex
 export async function fetchAccountState(address: string): Promise<AccountState | null> {
   try {
-    const response = await fetch("https://api.hyperliquid.xyz/info", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ 
-        type: "clearinghouseState",
-        user: address 
+    // Fetch both main dex and xyz dex account states in parallel
+    const [mainResponse, xyzResponse] = await Promise.all([
+      fetch("https://api.hyperliquid.xyz/info", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          type: "clearinghouseState",
+          user: address 
+        }),
       }),
-    });
+      fetch("https://api.hyperliquid.xyz/info", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          type: "clearinghouseState",
+          user: address,
+          dex: "xyz"
+        }),
+      }),
+    ]);
     
-    if (!response.ok) {
-      console.warn('Failed to fetch account state:', response.status);
+    let totalAccountValue = 0;
+    let totalMarginUsed = 0;
+    let totalWithdrawable = 0;
+    
+    if (mainResponse.ok) {
+      const mainData = await mainResponse.json();
+      if (mainData?.marginSummary?.accountValue) {
+        totalAccountValue += parseFloat(mainData.marginSummary.accountValue);
+        totalMarginUsed += parseFloat(mainData.marginSummary.totalMarginUsed || '0');
+        totalWithdrawable += parseFloat(mainData.withdrawable || '0');
+      }
+    }
+    
+    if (xyzResponse.ok) {
+      const xyzData = await xyzResponse.json();
+      if (xyzData?.marginSummary?.accountValue) {
+        totalAccountValue += parseFloat(xyzData.marginSummary.accountValue);
+        totalMarginUsed += parseFloat(xyzData.marginSummary.totalMarginUsed || '0');
+        totalWithdrawable += parseFloat(xyzData.withdrawable || '0');
+      }
+    }
+    
+    if (totalAccountValue === 0) {
       return null;
     }
     
-    const data = await response.json();
-    return data;
+    return {
+      marginSummary: {
+        accountValue: String(totalAccountValue),
+        totalMarginUsed: String(totalMarginUsed),
+        totalNtlPos: '0',
+      },
+      withdrawable: String(totalWithdrawable),
+    };
   } catch (error) {
     console.error('Error fetching account state:', error);
     return null;

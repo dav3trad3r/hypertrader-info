@@ -93,12 +93,13 @@ interface TwapHistoryItem {
     minutes: number;
     reduceOnly: boolean;
     randomize: boolean;
+    timestamp: number;
   };
   status: {
     status: 'activated' | 'completed' | 'terminated' | 'canceled';
-    twapId: number;
   };
   time: number;
+  twapId: number;
 }
 
 const HYPERLIQUID_API = "https://api.hyperliquid.xyz/info";
@@ -120,10 +121,12 @@ const PerpPositionItem = memo(function PerpPositionItem({
   const leverage = position.leverage?.value || 1;
   const isProfitable = unrealizedPnl > 0;
   
-  // Funding fees
+  // Funding fees - in Hyperliquid, POSITIVE cumFunding means funding PAID (cost), NEGATIVE means funding RECEIVED (profit)
   const fundingSinceOpen = position.cumFunding?.sinceOpen ? parseFloat(position.cumFunding.sinceOpen) : null;
   const hasFunding = fundingSinceOpen !== null && fundingSinceOpen !== 0;
-  const fundingPositive = fundingSinceOpen !== null && fundingSinceOpen > 0;
+  // Invert for display: positive funding paid = negative P&L impact
+  const fundingPnlImpact = fundingSinceOpen !== null ? -fundingSinceOpen : null;
+  const fundingPositive = fundingPnlImpact !== null && fundingPnlImpact > 0;
   
   // Liquidation price
   const liquidationPx = position.liquidationPx ? parseFloat(position.liquidationPx) : null;
@@ -201,8 +204,8 @@ const PerpPositionItem = memo(function PerpPositionItem({
       {/* Funding & Liquidation row */}
       <div className="flex items-center justify-between mt-2 pt-2 border-t border-border/30 text-xs">
         <div className="flex items-center gap-4">
-          {/* Funding fees */}
-          {hasFunding && (
+          {/* Funding fees - show P&L impact (negative of cumFunding) */}
+          {hasFunding && fundingPnlImpact !== null && (
             <div className="flex items-center gap-1">
               <Zap className="w-3 h-3 text-muted-foreground" />
               <span className="text-muted-foreground">Funding:</span>
@@ -210,7 +213,7 @@ const PerpPositionItem = memo(function PerpPositionItem({
                 "font-mono",
                 fundingPositive ? "text-profit" : "text-loss"
               )}>
-                {fundingPositive ? '+' : ''}{formatCurrency(fundingSinceOpen!)}
+                {fundingPositive ? '+' : ''}{formatCurrency(fundingPnlImpact)}
               </span>
             </div>
           )}
@@ -402,8 +405,8 @@ export function LiveTrades({ address, marketType }: LiveTradesProps) {
 
     const fetchPositions = async () => {
       try {
-        // Fetch perp (main dex), HIP-3 perp (xyz dex), spot positions, and TWAP slice fills in parallel
-        const [perpResponse, xyzPerpResponse, spotResponse, twapSliceFillsResponse] = await Promise.all([
+        // Fetch perp (main dex), HIP-3 perp (xyz dex), spot positions, and TWAP history in parallel
+        const [perpResponse, xyzPerpResponse, spotResponse, twapHistoryResponse] = await Promise.all([
           fetch(HYPERLIQUID_API, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -433,7 +436,7 @@ export function LiveTrades({ address, marketType }: LiveTradesProps) {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              type: "userTwapSliceFills",
+              type: "twapHistory",
               user: address,
             }),
           }),
@@ -515,65 +518,40 @@ export function LiveTrades({ address, marketType }: LiveTradesProps) {
           }
         }
 
-        // Process TWAP slice fills to identify active TWAPs
-        // We look at recent fills and group by twapId to track active orders
-        if (twapSliceFillsResponse.ok) {
-          const twapData: Array<{ fill: any; twapId: number }> = await twapSliceFillsResponse.json();
+        // Process TWAP history to find active TWAPs
+        if (twapHistoryResponse.ok) {
+          const twapHistory: TwapHistoryItem[] = await twapHistoryResponse.json();
           
-          if (Array.isArray(twapData) && twapData.length > 0) {
-            // Group fills by twapId and aggregate
-            const twapMap = new Map<number, {
-              coin: string;
-              side: 'B' | 'A';
-              fills: Array<{ sz: number; px: number; time: number }>;
-              latestTime: number;
-            }>();
-
-            twapData.forEach(item => {
-              const { fill, twapId } = item;
-              const existing = twapMap.get(twapId);
-              const fillData = {
-                sz: parseFloat(fill.sz),
-                px: parseFloat(fill.px),
-                time: fill.time,
-              };
-
-              if (existing) {
-                existing.fills.push(fillData);
-                existing.latestTime = Math.max(existing.latestTime, fill.time);
-              } else {
-                twapMap.set(twapId, {
-                  coin: fill.coin,
-                  side: fill.side,
-                  fills: [fillData],
-                  latestTime: fill.time,
-                });
+          if (Array.isArray(twapHistory) && twapHistory.length > 0) {
+            // Group by twapId and get the latest status for each
+            const twapLatestStatus = new Map<number, TwapHistoryItem>();
+            
+            twapHistory.forEach(item => {
+              const existing = twapLatestStatus.get(item.twapId);
+              // Keep the most recent entry for each twapId
+              if (!existing || item.time > existing.time) {
+                twapLatestStatus.set(item.twapId, item);
               }
             });
-
-            // Consider TWAPs from the last 2 hours as potentially active
-            const twoHoursAgo = Date.now() - 2 * 60 * 60 * 1000;
+            
+            // Filter for active TWAPs only
             const activeTwaps: TwapOrder[] = [];
-
-            twapMap.forEach((data, twapId) => {
-              // Only show TWAPs with recent activity
-              if (data.latestTime > twoHoursAgo) {
-                const totalExecutedSz = data.fills.reduce((sum, f) => sum + f.sz, 0);
-                const totalExecutedNtl = data.fills.reduce((sum, f) => sum + f.sz * f.px, 0);
-                const earliestTime = Math.min(...data.fills.map(f => f.time));
-
+            
+            twapLatestStatus.forEach((item, twapId) => {
+              // Only show TWAPs that are currently "activated"
+              if (item.status.status === 'activated') {
                 activeTwaps.push({
                   twapId,
-                  coin: data.coin,
-                  side: data.side,
-                  sz: String(totalExecutedSz * 1.5), // Estimate total size (we don't have exact)
-                  executedSz: String(totalExecutedSz),
-                  executedNtl: String(totalExecutedNtl),
-                  minutes: 30, // Default estimate
-                  reduceOnly: false,
-                  randomize: false,
+                  coin: item.state.coin,
+                  side: item.state.side,
+                  sz: item.state.sz,
+                  executedSz: item.state.executedSz,
+                  executedNtl: item.state.executedNtl,
+                  minutes: item.state.minutes,
+                  reduceOnly: item.state.reduceOnly,
+                  randomize: item.state.randomize,
                   status: 'activated',
-                  time: earliestTime,
+                  time: item.state.timestamp || item.time * 1000, // Use timestamp if available
                 });
               }
             });
@@ -592,7 +570,7 @@ export function LiveTrades({ address, marketType }: LiveTradesProps) {
               setTimeout(() => setNewTwapIds(new Set()), 2000);
             }
 
-            setTwapOrders(activeTwaps.slice(0, 5)); // Show up to 5 recent TWAPs
+            setTwapOrders(activeTwaps);
           } else {
             setTwapOrders([]);
           }
