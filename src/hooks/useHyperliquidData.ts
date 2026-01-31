@@ -2,6 +2,7 @@ import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { 
   fetchAllAvailableFills,
   fetchFillsForMonth, 
+  fetchAccountState,
   isValidAddress,
   filterFillsByMarket,
   processDailyPnL,
@@ -71,6 +72,7 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
   const [ensName, setEnsName] = useState<string | null>(null);
   const [marketType, setMarketType] = useState<MarketType>('all');
   const [spotTokenCache, setSpotTokenCache] = useState<Map<number, string>>(new Map());
+  const [accountValue, setAccountValue] = useState<number | null>(null);
   
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -103,6 +105,11 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
     const assetPerformance = processAssetPerformance(filteredFills, spotTokenCache);
     const summary = calculateSummary(filteredFills, dailyPnL);
     
+    // Add account value to summary if available
+    if (accountValue !== null) {
+      summary.accountValue = accountValue;
+    }
+    
     return {
       fills: filteredFills,
       dailyPnL,
@@ -110,7 +117,7 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
       assetPerformance,
       summary,
     };
-  }, [rawFills, marketType, spotTokenCache]);
+  }, [rawFills, marketType, spotTokenCache, accountValue]);
 
   // Keep original data for reference
   const data = useMemo(() => {
@@ -217,6 +224,7 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
     setHitApiLimit(false);
     setEnsName(null);
     setTrackingInfo(null);
+    setAccountValue(null);
     
     try {
       // Resolve ENS name or validate address
@@ -275,7 +283,16 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
       });
       
       // Step 2: Simultaneously fetch from Hyperliquid API for immediate display
-      const apiResult = await fetchAllAvailableFills(resolvedAddress);
+      // Also fetch account state for balance
+      const [apiResult, accountState] = await Promise.all([
+        fetchAllAvailableFills(resolvedAddress),
+        fetchAccountState(resolvedAddress)
+      ]);
+      
+      // Set account value if available
+      if (accountState?.marginSummary?.accountValue) {
+        setAccountValue(parseFloat(accountState.marginSummary.accountValue));
+      }
       
       if (apiResult.fills.length === 0) {
         // Check if we have historical data in Supabase
@@ -414,6 +431,7 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
     setHitApiLimit(false);
     setIsSyncing(false);
     setTrackingInfo(null);
+    setAccountValue(null);
   }, []);
 
   return {
