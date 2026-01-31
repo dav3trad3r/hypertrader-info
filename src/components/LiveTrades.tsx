@@ -1,5 +1,5 @@
 import { useState, useEffect, memo } from 'react';
-import { Activity, ArrowUpRight, ArrowDownRight, Zap, Coins, Clock, TrendingUp, TrendingDown } from 'lucide-react';
+import { Activity, ArrowUpRight, ArrowDownRight, Zap, Coins, Clock, TrendingUp, TrendingDown, AlertTriangle } from 'lucide-react';
 import { cn, formatCurrency, formatSize } from '@/lib/utils';
 import { Progress } from '@/components/ui/progress';
 
@@ -19,6 +19,11 @@ interface PerpPosition {
   leverage: {
     type: string;
     value: number;
+  };
+  liquidationPx: string | null;
+  cumFunding: {
+    allTime: string;
+    sinceOpen: string;
   };
 }
 
@@ -57,6 +62,12 @@ interface ClearinghouseState {
       unrealizedPnl: string;
       returnOnEquity: string;
       leverage: { type: string; value: number };
+      liquidationPx: string | null;
+      cumFunding: {
+        allTime: string;
+        sinceChange: string;
+        sinceOpen: string;
+      };
     };
     type: string;
   }[];
@@ -108,66 +119,118 @@ const PerpPositionItem = memo(function PerpPositionItem({
   const returnOnEquity = parseFloat(position.returnOnEquity) * 100;
   const leverage = position.leverage?.value || 1;
   const isProfitable = unrealizedPnl > 0;
+  
+  // Funding fees
+  const fundingSinceOpen = position.cumFunding?.sinceOpen ? parseFloat(position.cumFunding.sinceOpen) : null;
+  const hasFunding = fundingSinceOpen !== null && fundingSinceOpen !== 0;
+  const fundingPositive = fundingSinceOpen !== null && fundingSinceOpen > 0;
+  
+  // Liquidation price
+  const liquidationPx = position.liquidationPx ? parseFloat(position.liquidationPx) : null;
+  const hasLiquidation = liquidationPx !== null && liquidationPx > 0;
+  
+  // Calculate distance to liquidation
+  const currentPrice = entryPrice; // Approximation - we could fetch mark price for more accuracy
+  const liqDistance = hasLiquidation && currentPrice > 0 
+    ? ((liquidationPx - currentPrice) / currentPrice) * 100
+    : null;
 
   return (
     <div 
       className={cn(
-        "flex items-center justify-between p-3 rounded-lg border transition-all duration-300",
+        "flex flex-col p-3 rounded-lg border transition-all duration-300",
         isNew ? "bg-primary/10 border-primary/30 animate-pulse" : "bg-secondary/30 border-border/50",
         "hover:bg-secondary/50"
       )}
     >
-      <div className="flex items-center gap-3">
-        <div className={cn(
-          "w-8 h-8 rounded-lg flex items-center justify-center",
-          isLong ? "bg-profit/20" : "bg-loss/20"
-        )}>
-          {isLong ? (
-            <ArrowUpRight className="w-4 h-4 text-profit" />
-          ) : (
-            <ArrowDownRight className="w-4 h-4 text-loss" />
-          )}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className={cn(
+            "w-8 h-8 rounded-lg flex items-center justify-center",
+            isLong ? "bg-profit/20" : "bg-loss/20"
+          )}>
+            {isLong ? (
+              <ArrowUpRight className="w-4 h-4 text-profit" />
+            ) : (
+              <ArrowDownRight className="w-4 h-4 text-loss" />
+            )}
+          </div>
+          
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="font-medium text-sm text-foreground">{position.coin}</span>
+              <span className={cn(
+                "text-xs font-medium",
+                isLong ? "text-profit" : "text-loss"
+              )}>
+                {isLong ? 'LONG' : 'SHORT'}
+              </span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                {leverage}x
+              </span>
+            </div>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span className="font-mono">
+                {formatSize(Math.abs(size))} @ ${entryPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+              </span>
+            </div>
+          </div>
         </div>
-        
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="font-medium text-sm text-foreground">{position.coin}</span>
+
+        <div className="text-right">
+          <div className="flex items-center justify-end gap-2">
             <span className={cn(
-              "text-xs font-medium",
-              isLong ? "text-profit" : "text-loss"
+              "font-mono text-sm font-semibold",
+              isProfitable ? "text-profit" : "text-loss"
             )}>
-              {isLong ? 'LONG' : 'SHORT'}
+              {isProfitable ? '+' : ''}{formatCurrency(unrealizedPnl)}
             </span>
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
-              {leverage}x
-            </span>
-          </div>
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span className="font-mono">
-              {formatSize(Math.abs(size))} @ ${entryPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+            <span className={cn(
+              "text-xs font-mono",
+              isProfitable ? "text-profit/80" : "text-loss/80"
+            )}>
+              ({returnOnEquity >= 0 ? '+' : ''}{returnOnEquity.toFixed(2)}%)
             </span>
           </div>
+          <span className="text-xs text-muted-foreground">
+            {formatCurrency(positionValue)} value
+          </span>
         </div>
       </div>
-
-      <div className="text-right">
-        <div className="flex items-center justify-end gap-2">
-          <span className={cn(
-            "font-mono text-sm font-semibold",
-            isProfitable ? "text-profit" : "text-loss"
-          )}>
-            {isProfitable ? '+' : ''}{formatCurrency(unrealizedPnl)}
-          </span>
-          <span className={cn(
-            "text-xs font-mono",
-            isProfitable ? "text-profit/80" : "text-loss/80"
-          )}>
-            ({returnOnEquity >= 0 ? '+' : ''}{returnOnEquity.toFixed(2)}%)
-          </span>
+      
+      {/* Funding & Liquidation row */}
+      <div className="flex items-center justify-between mt-2 pt-2 border-t border-border/30 text-xs">
+        <div className="flex items-center gap-4">
+          {/* Funding fees */}
+          {hasFunding && (
+            <div className="flex items-center gap-1">
+              <Zap className="w-3 h-3 text-muted-foreground" />
+              <span className="text-muted-foreground">Funding:</span>
+              <span className={cn(
+                "font-mono",
+                fundingPositive ? "text-profit" : "text-loss"
+              )}>
+                {fundingPositive ? '+' : ''}{formatCurrency(fundingSinceOpen!)}
+              </span>
+            </div>
+          )}
+          
+          {/* Liquidation price */}
+          {hasLiquidation && (
+            <div className="flex items-center gap-1">
+              <AlertTriangle className="w-3 h-3 text-destructive" />
+              <span className="text-muted-foreground">Liq:</span>
+              <span className="font-mono text-destructive">
+                ${liquidationPx.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+              </span>
+              {liqDistance !== null && (
+                <span className="text-muted-foreground">
+                  ({liqDistance > 0 ? '+' : ''}{liqDistance.toFixed(1)}%)
+                </span>
+              )}
+            </div>
+          )}
         </div>
-        <span className="text-xs text-muted-foreground">
-          {formatCurrency(positionValue)} value
-        </span>
       </div>
     </div>
   );
@@ -397,6 +460,11 @@ export function LiveTrades({ address, marketType }: LiveTradesProps) {
                 unrealizedPnl: ap.position.unrealizedPnl,
                 returnOnEquity: ap.position.returnOnEquity,
                 leverage: ap.position.leverage,
+                liquidationPx: ap.position.liquidationPx,
+                cumFunding: {
+                  allTime: ap.position.cumFunding?.allTime || '0',
+                  sinceOpen: ap.position.cumFunding?.sinceOpen || '0',
+                },
               }));
           }
         }
@@ -417,6 +485,11 @@ export function LiveTrades({ address, marketType }: LiveTradesProps) {
                 unrealizedPnl: ap.position.unrealizedPnl,
                 returnOnEquity: ap.position.returnOnEquity,
                 leverage: ap.position.leverage,
+                liquidationPx: ap.position.liquidationPx,
+                cumFunding: {
+                  allTime: ap.position.cumFunding?.allTime || '0',
+                  sinceOpen: ap.position.cumFunding?.sinceOpen || '0',
+                },
               }));
           }
         }
