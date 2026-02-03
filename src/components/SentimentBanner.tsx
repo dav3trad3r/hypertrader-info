@@ -260,11 +260,11 @@ export function SentimentBanner() {
     <div className="space-y-6">
       {/* Breaking Alert */}
       {data.breaking_alert?.active && (
-        <div className="bg-loss/10 border-2 border-loss/40 rounded-lg p-4 flex items-start gap-3 animate-pulse-slow">
-          <AlertTriangle className="w-5 h-5 text-loss flex-shrink-0 mt-0.5" />
+        <div className="bg-orange-500/10 border-2 border-orange-500/40 rounded-lg p-4 flex items-start gap-3 animate-pulse-slow">
+          <AlertTriangle className="w-5 h-5 text-orange-500 flex-shrink-0 mt-0.5" />
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-xs font-semibold text-loss uppercase">Breaking</span>
+              <span className="text-xs font-semibold text-orange-500 uppercase">Breaking</span>
               <span className="text-xs text-muted-foreground">
                 {data.breaking_alert.ageMinutes}m ago
               </span>
