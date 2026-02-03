@@ -36,12 +36,14 @@ interface SentimentData {
       safe_haven: number;
       news_sentiment: number;
       volatility: number;
+      funding?: number;
+      whale_flow?: number;
     };
   };
   key_prices: {
     BTC: { price: number; change24h: number; prevDayPx: number };
     ETH: { price: number; change24h: number; prevDayPx: number };
-    SOL: { price: number; change24h: number; prevDayPx: number };
+    SOL?: { price: number; change24h: number; prevDayPx: number };
     GOLD: { price: number; change24h: number; prevDayPx: number };
     SILVER: { price: number; change24h: number; prevDayPx: number };
     HYPE?: { price: number; change24h: number; prevDayPx: number };
@@ -52,7 +54,8 @@ interface SentimentData {
     type: string;
     urgency: string;
     ageMinutes: number;
-    keywords: string[];
+    category?: string;
+    sentiment_score?: number;
   };
   latest_headlines: Array<{
     title: string;
@@ -272,13 +275,11 @@ export function SentimentBanner() {
               </span>
             </div>
             <p className="text-sm font-medium text-foreground">{data.breaking_alert.headline}</p>
-            {data.breaking_alert.keywords?.length > 0 && (
+            {data.breaking_alert.category && (
               <div className="flex gap-1 mt-2">
-                {data.breaking_alert.keywords.map((kw, i) => (
-                  <span key={i} className="text-xs bg-secondary px-1.5 py-0.5 rounded text-muted-foreground">
-                    {kw}
-                  </span>
-                ))}
+                <span className="text-xs bg-secondary px-1.5 py-0.5 rounded text-muted-foreground">
+                  {data.breaking_alert.category}
+                </span>
               </div>
             )}
           </div>
