@@ -405,7 +405,9 @@ export function SentimentBanner() {
           </div>
           
           <div className="space-y-3">
-            {data.key_prices && Object.entries(data.key_prices).map(([symbol, asset]) => (
+            {data.key_prices && Object.entries(data.key_prices)
+              .filter(([symbol]) => symbol !== 'SOL')
+              .map(([symbol, asset]) => (
               <div key={symbol} className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg">
                 <div className="flex items-center gap-3">
                   <span className="font-semibold text-foreground w-14">{symbol}</span>
