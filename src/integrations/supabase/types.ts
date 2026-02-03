@@ -71,6 +71,27 @@ export type Database = {
         }
         Relationships: []
       }
+      sentiment_cache: {
+        Row: {
+          created_at: string
+          data: Json
+          fetched_at: string
+          id: string
+        }
+        Insert: {
+          created_at?: string
+          data: Json
+          fetched_at?: string
+          id?: string
+        }
+        Update: {
+          created_at?: string
+          data?: Json
+          fetched_at?: string
+          id?: string
+        }
+        Relationships: []
+      }
       tracked_addresses: {
         Row: {
           access_count: number | null
