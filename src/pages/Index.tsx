@@ -14,6 +14,10 @@ import { MarketFilter } from '@/components/MarketFilter';
 import { SharePnLCard } from '@/components/SharePnLCard';
 import { LiveTrades } from '@/components/LiveTrades';
 import { ShareProfileButton } from '@/components/ShareProfileButton';
+import { TradingRulesBanner } from '@/components/TradingRulesBanner';
+
+// Address that shows the trading rules banner
+const RULES_ADDRESS = '0xF5dbd88878Ea8ED3992c883871a77bb146E6b619'.toLowerCase();
 
 // Refresh indicator with live countdown
 function RefreshIndicator({ isRefreshing, lastRefreshed }: { isRefreshing: boolean; lastRefreshed: Date | null }) {
@@ -122,6 +126,10 @@ const Index = () => {
         {/* Data Display */}
         {rawFills.length > 0 && !isLoading && (
           <div className="space-y-6 animate-fade-in">
+            {/* Trading Rules Banner - only for specific address */}
+            {address?.toLowerCase() === RULES_ADDRESS && (
+              <TradingRulesBanner />
+            )}
             {/* Gap Warning */}
             {trackingInfo?.has_gap && (
               <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4 flex items-start gap-3">
