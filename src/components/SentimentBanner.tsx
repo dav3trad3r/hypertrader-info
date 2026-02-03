@@ -44,6 +44,7 @@ interface SentimentData {
     SOL: { price: number; change24h: number; prevDayPx: number };
     GOLD: { price: number; change24h: number; prevDayPx: number };
     SILVER: { price: number; change24h: number; prevDayPx: number };
+    HYPE?: { price: number; change24h: number; prevDayPx: number };
   };
   breaking_alert?: {
     active: boolean;
@@ -147,12 +148,69 @@ export function SentimentBanner() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const fetchHypePrice = async (): Promise<{ price: number; change24h: number; prevDayPx: number } | null> => {
+    try {
+      const { data: result, error: fnError } = await supabase.functions.invoke('hyperliquid-proxy', {
+        body: { type: 'allMids' }
+      });
+      
+      if (fnError || !result) return null;
+      
+      const hypePrice = parseFloat(result['HYPE']);
+      if (!hypePrice) return null;
+      
+      // Also fetch 24h data for change calculation
+      const { data: meta } = await supabase.functions.invoke('hyperliquid-proxy', {
+        body: { type: 'meta' }
+      });
+      
+      // Get mark price and previous day price from asset contexts if available
+      const { data: ctxs } = await supabase.functions.invoke('hyperliquid-proxy', {
+        body: { type: 'metaAndAssetCtxs' }
+      });
+      
+      let change24h = 0;
+      let prevDayPx = hypePrice;
+      
+      if (ctxs && Array.isArray(ctxs) && ctxs[1]) {
+        const assetCtxs = ctxs[1];
+        const universe = ctxs[0]?.universe || [];
+        const hypeIdx = universe.findIndex((u: { name: string }) => u.name === 'HYPE');
+        if (hypeIdx >= 0 && assetCtxs[hypeIdx]) {
+          const ctx = assetCtxs[hypeIdx];
+          prevDayPx = parseFloat(ctx.prevDayPx) || hypePrice;
+          change24h = prevDayPx > 0 ? ((hypePrice - prevDayPx) / prevDayPx) * 100 : 0;
+        }
+      }
+      
+      return { price: hypePrice, change24h, prevDayPx };
+    } catch (err) {
+      console.error('Failed to fetch HYPE price:', err);
+      return null;
+    }
+  };
+
   const fetchSentiment = async () => {
     try {
       setError(null);
-      const { data: result, error: fnError } = await supabase.functions.invoke('get-sentiment');
       
-      if (fnError) throw fnError;
+      // Fetch sentiment and HYPE price in parallel
+      const [sentimentResult, hypeData] = await Promise.all([
+        supabase.functions.invoke('get-sentiment'),
+        fetchHypePrice()
+      ]);
+      
+      if (sentimentResult.error) throw sentimentResult.error;
+      
+      const result = sentimentResult.data;
+      
+      // Add HYPE to key_prices if we got it
+      if (hypeData && result.key_prices) {
+        result.key_prices = {
+          ...result.key_prices,
+          HYPE: hypeData
+        };
+      }
       
       setData(result);
     } catch (err) {
