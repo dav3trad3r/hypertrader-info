@@ -15,6 +15,7 @@ import { SharePnLCard } from '@/components/SharePnLCard';
 import { LiveTrades } from '@/components/LiveTrades';
 import { ShareProfileButton } from '@/components/ShareProfileButton';
 import { TradingRulesBanner } from '@/components/TradingRulesBanner';
+import { SentimentBanner } from '@/components/SentimentBanner';
 
 // Address that shows the trading rules banner
 const RULES_ADDRESS = '0xF5dbd88878Ea8ED3992c883871a77bb146E6b619'.toLowerCase();
@@ -99,9 +100,12 @@ const Index = () => {
       <Header />
       
       <main className="container mx-auto px-4 py-8">
+        {/* Sentiment Banner - Always visible */}
+        <SentimentBanner />
+        
         {/* Search Section */}
         <div className="mb-10">
-          <AddressSearch 
+          <AddressSearch
             onSearch={fetchData}
             isLoading={isLoading}
             currentAddress={address}
