@@ -12,6 +12,7 @@ const RULES = [
   { id: 'i', text: 'Read rules every day', icon: '📖' },
   { id: 'j', text: 'Never use cross margin', icon: '🚫' },
   { id: 'k', text: 'Love what you do and don\'t forget to spend what you earn. Life above all.', icon: '❤️' },
+  { id: 'l', text: 'Fast, consecutive small wins. Respect your money or it won\'t respect you. Never get greedy.', icon: '💰' },
 ];
 
 export function TradingRulesBanner() {
