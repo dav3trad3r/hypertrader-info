@@ -9,6 +9,9 @@ const RULES = [
   { id: 'f', text: 'SET STOP LOSS (most important)', icon: '🛑', critical: true },
   { id: 'g', text: 'NEVER trade more than 33% of your account in a single position', icon: '⚖️' },
   { id: 'h', text: 'There is ALWAYS another trade - be patient and wait for the best setups', icon: '⏳' },
+  { id: 'i', text: 'Read rules every day', icon: '📖' },
+  { id: 'j', text: 'Never use cross margin', icon: '🚫' },
+  { id: 'k', text: 'Love what you do and don\'t forget to spend what you earn. Life above all.', icon: '❤️', critical: true },
 ];
 
 export function TradingRulesBanner() {
