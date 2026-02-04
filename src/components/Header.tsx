@@ -1,5 +1,7 @@
-import { TrendingUp, BarChart3 } from 'lucide-react';
+import { TrendingUp, BarChart3, Menu } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
+import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import { Button } from '@/components/ui/button';
 
 export function Header() {
   const location = useLocation();
@@ -47,11 +49,45 @@ export function Header() {
             </nav>
           </div>
           
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <div className="flex items-center gap-1.5">
               <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
               <span className="text-xs text-muted-foreground">Live Data</span>
             </div>
+            
+            {/* Mobile Menu */}
+            <Sheet>
+              <SheetTrigger asChild className="sm:hidden">
+                <Button variant="ghost" size="icon">
+                  <Menu className="h-5 w-5" />
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="right" className="w-64">
+                <nav className="flex flex-col gap-2 mt-6">
+                  <Link 
+                    to="/" 
+                    className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                      location.pathname === '/' 
+                        ? 'bg-primary/10 text-primary' 
+                        : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+                    }`}
+                  >
+                    Dashboard
+                  </Link>
+                  <Link 
+                    to="/sentiment" 
+                    className={`px-3 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-1.5 ${
+                      location.pathname === '/sentiment' 
+                        ? 'bg-primary/10 text-primary' 
+                        : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+                    }`}
+                  >
+                    <BarChart3 className="w-4 h-4" />
+                    Sentiment
+                  </Link>
+                </nav>
+              </SheetContent>
+            </Sheet>
           </div>
         </div>
       </div>
