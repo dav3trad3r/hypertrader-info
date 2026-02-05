@@ -21,6 +21,7 @@
      ETH?: { price: number; change24h: number };
      HYPE?: { price: number; change24h: number };
    };
+  summary?: string;
    timestamp: string;
  }
  
@@ -248,6 +249,20 @@
                ))}
              </div>
  
+            {/* AI Summary */}
+            {data.summary && (
+              <div className="mt-4 p-3 rounded-lg bg-secondary/30">
+                <div className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
+                  <Activity className="w-3 h-3" />
+                  AI Analysis
+                </div>
+                <p className="text-xs text-foreground/80 leading-relaxed line-clamp-4">
+                  {data.summary.split('\n\n')[0]?.replace(/\*\*/g, '').slice(0, 200)}
+                  {data.summary.length > 200 ? '...' : ''}
+                </p>
+              </div>
+            )}
+
              {/* Footer */}
              <div className="flex items-center justify-between pt-4 mt-4 border-t border-border/50">
                <div className="text-[10px] text-muted-foreground">

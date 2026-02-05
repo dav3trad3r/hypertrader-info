@@ -42,6 +42,7 @@ const Sentiment = () => {
                 action: data.action,
                 fear_greed: data.fear_greed,
                 key_prices: data.key_prices,
+                summary: data.summary,
                 timestamp: data.timestamp,
               }} />
             )}
