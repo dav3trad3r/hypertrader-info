@@ -259,9 +259,14 @@
                 <p className="text-xs text-foreground/80 leading-relaxed line-clamp-4">
                   {data.summary.split('\n\n')[0]?.replace(/\*\*/g, '').slice(0, 200)}
                   {data.summary.length > 200 && (
-                    <span className="text-primary ml-1">
+                    <a 
+                      href="https://hypertrader.info/sentiment" 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-primary ml-1 hover:underline"
+                    >
                       ... See more →
-                    </span>
+                    </a>
                   )}
                 </p>
               </div>
