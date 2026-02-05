@@ -1,8 +1,12 @@
+import { useState, useEffect } from 'react';
 import { Header } from '@/components/Header';
-import { SentimentBanner } from '@/components/SentimentBanner';
+import { SentimentBanner, useSentimentData } from '@/components/SentimentBanner';
+import { ShareSentimentCard } from '@/components/ShareSentimentCard';
 import naganoLogo from '@/assets/nagano-ai-logo.jpg';
 
 const Sentiment = () => {
+  const { data } = useSentimentData();
+
   return (
     <div className="min-h-screen bg-background grid-bg">
       <Header />
@@ -32,6 +36,15 @@ const Sentiment = () => {
               />
               <span className="font-semibold text-foreground">NaganoAI</span>
             </a>
+            
+            {data && (
+              <ShareSentimentCard data={{
+                action: data.action,
+                fear_greed: data.fear_greed,
+                key_prices: data.key_prices,
+                timestamp: data.timestamp,
+              }} />
+            )}
           </div>
         </div>
         

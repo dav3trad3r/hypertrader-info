@@ -15,7 +15,7 @@ import {
   Zap
 } from 'lucide-react';
 
-interface SentimentData {
+export interface SentimentData {
   action: {
     bias: string;
     confidence: string;
@@ -83,70 +83,8 @@ interface SentimentData {
   stale?: boolean;
 }
 
-function getBiasColor(bias: string): string {
-  const upper = bias.toUpperCase();
-  if (upper.includes('STRONG SHORT') || upper.includes('BEARISH')) return 'text-loss';
-  if (upper.includes('SHORT')) return 'text-loss/80';
-  if (upper.includes('STRONG LONG') || upper.includes('BULLISH')) return 'text-profit';
-  if (upper.includes('LONG')) return 'text-profit/80';
-  return 'text-muted-foreground';
-}
-
-function getBiasBgColor(bias: string): string {
-  const upper = bias.toUpperCase();
-  if (upper.includes('STRONG SHORT') || upper.includes('BEARISH')) return 'bg-loss/20 border-loss/40';
-  if (upper.includes('SHORT')) return 'bg-loss/10 border-loss/30';
-  if (upper.includes('STRONG LONG') || upper.includes('BULLISH')) return 'bg-profit/20 border-profit/40';
-  if (upper.includes('LONG')) return 'bg-profit/10 border-profit/30';
-  return 'bg-secondary border-border';
-}
-
-function getBiasIcon(bias: string) {
-  const upper = bias.toUpperCase();
-  if (upper.includes('SHORT') || upper.includes('BEARISH')) {
-    return <TrendingDown className="w-6 h-6" />;
-  }
-  if (upper.includes('LONG') || upper.includes('BULLISH')) {
-    return <TrendingUp className="w-6 h-6" />;
-  }
-  return <Minus className="w-6 h-6" />;
-}
-
-function getFearGreedColor(score: number): string {
-  if (score <= 25) return 'text-loss';
-  if (score <= 45) return 'text-orange-500';
-  if (score <= 55) return 'text-yellow-500';
-  if (score <= 75) return 'text-profit/80';
-  return 'text-profit';
-}
-
-function getFearGreedBg(score: number): string {
-  if (score <= 25) return 'bg-loss';
-  if (score <= 45) return 'bg-orange-500';
-  if (score <= 55) return 'bg-yellow-500';
-  if (score <= 75) return 'bg-profit/80';
-  return 'bg-profit';
-}
-
-function formatPrice(price: number): string {
-  if (price >= 1000) return `$${price.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
-  if (price >= 1) return `$${price.toFixed(2)}`;
-  return `$${price.toFixed(4)}`;
-}
-
-function formatChange(change: number): string {
-  const sign = change >= 0 ? '+' : '';
-  return `${sign}${change.toFixed(2)}%`;
-}
-
-function formatTimeAgo(minutes: number): string {
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  const mins = minutes % 60;
-  return `${hours}h ${mins}m ago`;
-}
-
-export function SentimentBanner() {
+// Custom hook to fetch and manage sentiment data
+export function useSentimentData() {
   const [data, setData] = useState<SentimentData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -229,6 +167,80 @@ export function SentimentBanner() {
     const interval = setInterval(fetchSentiment, 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, []);
+
+  return { data, loading, error, refetch: fetchSentiment };
+}
+
+function getBiasColor(bias: string): string {
+  const upper = bias.toUpperCase();
+  if (upper.includes('STRONG SHORT') || upper.includes('BEARISH')) return 'text-loss';
+  if (upper.includes('SHORT')) return 'text-loss/80';
+  if (upper.includes('STRONG LONG') || upper.includes('BULLISH')) return 'text-profit';
+  if (upper.includes('LONG')) return 'text-profit/80';
+  return 'text-muted-foreground';
+}
+
+function getBiasBgColor(bias: string): string {
+  const upper = bias.toUpperCase();
+  if (upper.includes('STRONG SHORT') || upper.includes('BEARISH')) return 'bg-loss/20 border-loss/40';
+  if (upper.includes('SHORT')) return 'bg-loss/10 border-loss/30';
+  if (upper.includes('STRONG LONG') || upper.includes('BULLISH')) return 'bg-profit/20 border-profit/40';
+  if (upper.includes('LONG')) return 'bg-profit/10 border-profit/30';
+  return 'bg-secondary border-border';
+}
+
+function getBiasIcon(bias: string) {
+  const upper = bias.toUpperCase();
+  if (upper.includes('SHORT') || upper.includes('BEARISH')) {
+    return <TrendingDown className="w-6 h-6" />;
+  }
+  if (upper.includes('LONG') || upper.includes('BULLISH')) {
+    return <TrendingUp className="w-6 h-6" />;
+  }
+  return <Minus className="w-6 h-6" />;
+}
+
+function getFearGreedColor(score: number): string {
+  if (score <= 25) return 'text-loss';
+  if (score <= 45) return 'text-orange-500';
+  if (score <= 55) return 'text-yellow-500';
+  if (score <= 75) return 'text-profit/80';
+  return 'text-profit';
+}
+
+function getFearGreedBg(score: number): string {
+  if (score <= 25) return 'bg-loss';
+  if (score <= 45) return 'bg-orange-500';
+  if (score <= 55) return 'bg-yellow-500';
+  if (score <= 75) return 'bg-profit/80';
+  return 'bg-profit';
+}
+
+function formatPrice(price: number): string {
+  if (price >= 1000) return `$${price.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+  if (price >= 1) return `$${price.toFixed(2)}`;
+  return `$${price.toFixed(4)}`;
+}
+
+function formatChange(change: number): string {
+  const sign = change >= 0 ? '+' : '';
+  return `${sign}${change.toFixed(2)}%`;
+}
+
+function formatTimeAgo(minutes: number): string {
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  return `${hours}h ${mins}m ago`;
+}
+
+export function SentimentBanner({ externalData }: { externalData?: SentimentData | null }) {
+  const hookResult = useSentimentData();
+  
+  // Use external data if provided, otherwise use hook data
+  const data = externalData !== undefined ? externalData : hookResult.data;
+  const loading = externalData !== undefined ? false : hookResult.loading;
+  const error = externalData !== undefined ? null : hookResult.error;
 
   if (loading) {
     return (
