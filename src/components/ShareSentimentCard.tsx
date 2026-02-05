@@ -273,7 +273,7 @@
                  {new Date(data.timestamp).toLocaleTimeString()}
                </div>
               <div className="text-xs font-medium text-primary flex items-center gap-1">
-                hyper-peek-pro.lovable.app/sentiment
+                hypertrader.info/sentiment
                </div>
              </div>
            </div>
