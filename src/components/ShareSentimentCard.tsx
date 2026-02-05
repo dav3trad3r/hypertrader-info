@@ -258,7 +258,11 @@
                 </div>
                 <p className="text-xs text-foreground/80 leading-relaxed line-clamp-4">
                   {data.summary.split('\n\n')[0]?.replace(/\*\*/g, '').slice(0, 200)}
-                  {data.summary.length > 200 ? '...' : ''}
+                  {data.summary.length > 200 && (
+                    <span className="text-primary ml-1">
+                      ... See more →
+                    </span>
+                  )}
                 </p>
               </div>
             )}
@@ -268,8 +272,8 @@
                <div className="text-[10px] text-muted-foreground">
                  {new Date(data.timestamp).toLocaleTimeString()}
                </div>
-               <div className="text-xs font-medium text-primary">
-                 hyperliquid.xyz
+              <div className="text-xs font-medium text-primary flex items-center gap-1">
+                hyper-peek-pro.lovable.app/sentiment
                </div>
              </div>
            </div>
