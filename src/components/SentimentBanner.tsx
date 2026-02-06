@@ -32,12 +32,15 @@ export interface SentimentData {
     score: number;
     label: string;
     components: {
+      multi_day_drawdown?: number;
       price_momentum: number;
       safe_haven: number;
       news_sentiment: number;
-      volatility: number;
+      volatility?: number;
       funding?: number;
       whale_flow?: number;
+      defi_macro?: number;
+      volume_context?: number;
     };
   };
   key_prices: {
