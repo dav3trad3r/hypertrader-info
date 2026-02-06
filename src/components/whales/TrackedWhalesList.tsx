@@ -1,4 +1,5 @@
-import { ExternalLink, User } from 'lucide-react';
+import { ExternalLink, User, Eye } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 interface WhaleAddress {
   address: string;
@@ -11,6 +12,8 @@ interface WhaleAddress {
 interface TrackedWhalesListProps {
   whales: WhaleAddress[];
   loading: boolean;
+  selectedWhale: string | null;
+  onSelectWhale: (address: string | null) => void;
 }
 
 function formatVolume(value: number): string {
@@ -24,7 +27,7 @@ function truncateAddress(address: string): string {
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
 }
 
-export function TrackedWhalesList({ whales, loading }: TrackedWhalesListProps) {
+export function TrackedWhalesList({ whales, loading, selectedWhale, onSelectWhale }: TrackedWhalesListProps) {
   if (loading) {
     return (
       <div className="bg-card border border-border rounded-lg p-5">
@@ -64,38 +67,57 @@ export function TrackedWhalesList({ whales, loading }: TrackedWhalesListProps) {
       </div>
 
       <div className="space-y-2 max-h-[300px] overflow-y-auto">
-        {whales.map((whale) => (
-          <div
-            key={whale.address}
-            className="flex items-center justify-between p-3 rounded-lg bg-secondary/30 hover:bg-secondary/50 transition-colors"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-                <User className="w-4 h-4 text-primary" />
+        {whales.map((whale) => {
+          const isSelected = selectedWhale === whale.address;
+          
+          return (
+            <div
+              key={whale.address}
+              className={`flex items-center justify-between p-3 rounded-lg transition-colors cursor-pointer ${
+                isSelected 
+                  ? 'bg-primary/20 border border-primary/40' 
+                  : 'bg-secondary/30 hover:bg-secondary/50'
+              }`}
+              onClick={() => onSelectWhale(isSelected ? null : whale.address)}
+            >
+              <div className="flex items-center gap-3">
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                  isSelected ? 'bg-primary/30' : 'bg-primary/10'
+                }`}>
+                  {isSelected ? (
+                    <Eye className="w-4 h-4 text-primary" />
+                  ) : (
+                    <User className="w-4 h-4 text-primary" />
+                  )}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-foreground">
+                      {whale.label || truncateAddress(whale.address)}
+                    </span>
+                    <Link
+                      to={`/?address=${whale.address}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="text-xs text-primary hover:underline flex items-center gap-0.5"
+                    >
+                      Dashboard
+                      <ExternalLink className="w-3 h-3" />
+                    </Link>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {truncateAddress(whale.address)}
+                  </p>
+                </div>
               </div>
-              <div>
-                <a
-                  href={`https://app.hyperliquid.xyz/explorer/address/${whale.address}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-sm font-medium text-foreground hover:text-primary flex items-center gap-1"
-                >
-                  {whale.label || truncateAddress(whale.address)}
-                  <ExternalLink className="w-3 h-3" />
-                </a>
-                <p className="text-xs text-muted-foreground">
-                  {truncateAddress(whale.address)}
+              <div className="text-right">
+                <p className="text-sm font-bold text-primary">
+                  {formatVolume(whale.total_volume)}
                 </p>
+                <p className="text-xs text-muted-foreground">position value</p>
               </div>
             </div>
-            <div className="text-right">
-              <p className="text-sm font-bold text-primary">
-                {formatVolume(whale.total_volume)}
-              </p>
-              <p className="text-xs text-muted-foreground">position value</p>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

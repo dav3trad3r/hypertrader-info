@@ -4,9 +4,9 @@ import { WhaleTradesFeed } from '@/components/whales/WhaleTradesFeed';
 import { WhaleActiveTwaps } from '@/components/whales/WhaleActiveTwaps';
 import { WhaleStats } from '@/components/whales/WhaleStats';
 import { TrackedWhalesList } from '@/components/whales/TrackedWhalesList';
+import { WhalePositionsViewer } from '@/components/whales/WhalePositionsViewer';
 import { supabase } from '@/integrations/supabase/client';
-import { Waves, RefreshCw } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Waves } from 'lucide-react';
 
 export interface WhaleTrade {
   id: string;
@@ -59,8 +59,8 @@ const Whales = () => {
   const [whales, setWhales] = useState<WhaleAddress[]>([]);
   const [stats, setStats] = useState<WhaleStats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [scanning, setScanning] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [selectedWhale, setSelectedWhale] = useState<string | null>(null);
 
   const fetchData = async () => {
     try {
@@ -85,31 +85,6 @@ const Whales = () => {
       console.error('Error fetching whale data:', error);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const triggerScan = async () => {
-    setScanning(true);
-    try {
-      await supabase.functions.invoke('whale-tracker', { body: { action: 'scan' } });
-      
-      // Fetch updated data
-      const [tradesRes, twapsRes, statsRes, whalesRes] = await Promise.all([
-        supabase.functions.invoke('whale-tracker', { body: { action: 'trades' } }),
-        supabase.functions.invoke('whale-tracker', { body: { action: 'twaps' } }),
-        supabase.functions.invoke('whale-tracker', { body: { action: 'stats' } }),
-        supabase.functions.invoke('whale-tracker', { body: { action: 'whales' } }),
-      ]);
-
-      if (tradesRes.data) setTrades(tradesRes.data);
-      if (twapsRes.data) setTwaps(twapsRes.data);
-      if (statsRes.data) setStats(statsRes.data);
-      if (whalesRes.data) setWhales(whalesRes.data);
-      setLastUpdated(new Date());
-    } catch (error) {
-      console.error('Error triggering scan:', error);
-    } finally {
-      setScanning(false);
     }
   };
 
@@ -145,16 +120,10 @@ const Whales = () => {
                 Updated {lastUpdated.toLocaleTimeString()}
               </span>
             )}
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={triggerScan}
-              disabled={scanning}
-              className="gap-2"
-            >
-              <RefreshCw className={`w-4 h-4 ${scanning ? 'animate-spin' : ''}`} />
-              {scanning ? 'Scanning...' : 'Scan Now'}
-            </Button>
+            <div className="flex items-center gap-1.5">
+              <div className="w-2 h-2 rounded-full bg-profit animate-pulse" />
+              <span className="text-xs text-muted-foreground">Auto-refresh 30s</span>
+            </div>
           </div>
         </div>
 
@@ -164,7 +133,12 @@ const Whales = () => {
         {/* Main Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
           {/* Tracked Whales */}
-          <TrackedWhalesList whales={whales} loading={loading} />
+          <TrackedWhalesList 
+            whales={whales} 
+            loading={loading} 
+            selectedWhale={selectedWhale}
+            onSelectWhale={setSelectedWhale}
+          />
           
           {/* Active TWAPs */}
           <WhaleActiveTwaps twaps={twaps} loading={loading} />
@@ -172,6 +146,17 @@ const Whales = () => {
           {/* Recent Large Trades */}
           <WhaleTradesFeed trades={trades} loading={loading} />
         </div>
+
+        {/* Selected Whale Positions */}
+        {selectedWhale && (
+          <div className="mt-6">
+            <WhalePositionsViewer 
+              address={selectedWhale} 
+              label={whales.find(w => w.address === selectedWhale)?.label || null}
+              onClose={() => setSelectedWhale(null)}
+            />
+          </div>
+        )}
 
         {/* How it works */}
         {!loading && whales.length > 0 && trades.length === 0 && twaps.length === 0 && (
