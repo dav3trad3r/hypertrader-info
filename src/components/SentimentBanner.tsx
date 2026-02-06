@@ -234,6 +234,18 @@ function formatTimeAgo(minutes: number): string {
   return `${hours}h ${mins}m ago`;
 }
 
+function decodeHtmlEntities(text: string): string {
+  return text
+    .replace(/&#39;/g, "'")
+    .replace(/&#8217;/g, "'")
+    .replace(/&#8216;/g, "'")
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ');
+}
+
 export function SentimentBanner({ externalData }: { externalData?: SentimentData | null }) {
   const hookResult = useSentimentData();
   
@@ -286,7 +298,7 @@ export function SentimentBanner({ externalData }: { externalData?: SentimentData
                 {data.breaking_alert.type}
               </span>
             </div>
-            <p className="text-sm font-medium text-foreground">{data.breaking_alert.headline}</p>
+            <p className="text-sm font-medium text-foreground">{decodeHtmlEntities(data.breaking_alert.headline)}</p>
             {data.breaking_alert.category && (
               <div className="flex gap-1 mt-2">
                 <span className="text-xs bg-secondary px-1.5 py-0.5 rounded text-muted-foreground">
@@ -531,7 +543,7 @@ export function SentimentBanner({ externalData }: { externalData?: SentimentData
                 </span>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-foreground group-hover:text-primary transition-colors line-clamp-2">
-                    {headline.title.replace(/&#8217;/g, "'").replace(/&amp;/g, '&')}
+                    {decodeHtmlEntities(headline.title)}
                   </p>
                   <div className="flex items-center gap-2 mt-1">
                     <span className="text-xs text-muted-foreground">{headline.source}</span>
