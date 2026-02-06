@@ -1,4 +1,4 @@
-import { TrendingUp, BarChart3, Menu } from 'lucide-react';
+import { TrendingUp, BarChart3, Menu, Waves } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
@@ -46,6 +46,17 @@ export function Header() {
                 <BarChart3 className="w-4 h-4" />
                 Sentiment
               </Link>
+              <Link 
+                to="/whales" 
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors flex items-center gap-1.5 ${
+                  location.pathname === '/whales' 
+                    ? 'bg-primary/10 text-primary' 
+                    : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+                }`}
+              >
+                <Waves className="w-4 h-4" />
+                Whales
+              </Link>
             </nav>
           </div>
           
@@ -84,6 +95,17 @@ export function Header() {
                   >
                     <BarChart3 className="w-4 h-4" />
                     Sentiment
+                  </Link>
+                  <Link 
+                    to="/whales" 
+                    className={`px-3 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-1.5 ${
+                      location.pathname === '/whales' 
+                        ? 'bg-primary/10 text-primary' 
+                        : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+                    }`}
+                  >
+                    <Waves className="w-4 h-4" />
+                    Whales
                   </Link>
                 </nav>
               </SheetContent>

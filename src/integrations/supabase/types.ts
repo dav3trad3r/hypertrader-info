@@ -131,6 +131,142 @@ export type Database = {
         }
         Relationships: []
       }
+      whale_addresses: {
+        Row: {
+          address: string
+          first_seen_at: string
+          is_active: boolean | null
+          label: string | null
+          last_seen_at: string
+          total_volume: number | null
+          trade_count: number | null
+        }
+        Insert: {
+          address: string
+          first_seen_at?: string
+          is_active?: boolean | null
+          label?: string | null
+          last_seen_at?: string
+          total_volume?: number | null
+          trade_count?: number | null
+        }
+        Update: {
+          address?: string
+          first_seen_at?: string
+          is_active?: boolean | null
+          label?: string | null
+          last_seen_at?: string
+          total_volume?: number | null
+          trade_count?: number | null
+        }
+        Relationships: []
+      }
+      whale_trades: {
+        Row: {
+          address: string
+          coin: string
+          created_at: string
+          id: string
+          notional: number
+          price: number
+          side: string
+          size: number
+          timestamp: number
+          tx_hash: string | null
+        }
+        Insert: {
+          address: string
+          coin: string
+          created_at?: string
+          id?: string
+          notional: number
+          price: number
+          side: string
+          size: number
+          timestamp: number
+          tx_hash?: string | null
+        }
+        Update: {
+          address?: string
+          coin?: string
+          created_at?: string
+          id?: string
+          notional?: number
+          price?: number
+          side?: string
+          size?: number
+          timestamp?: number
+          tx_hash?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whale_trades_address_fkey"
+            columns: ["address"]
+            isOneToOne: false
+            referencedRelation: "whale_addresses"
+            referencedColumns: ["address"]
+          },
+        ]
+      }
+      whale_twaps: {
+        Row: {
+          address: string
+          avg_price: number | null
+          coin: string
+          created_at: string
+          end_time: number | null
+          filled_size: number | null
+          id: string
+          is_active: boolean | null
+          last_fill_time: number | null
+          remaining_size: number
+          side: string
+          start_time: number
+          total_size: number
+          updated_at: string
+        }
+        Insert: {
+          address: string
+          avg_price?: number | null
+          coin: string
+          created_at?: string
+          end_time?: number | null
+          filled_size?: number | null
+          id?: string
+          is_active?: boolean | null
+          last_fill_time?: number | null
+          remaining_size: number
+          side: string
+          start_time: number
+          total_size: number
+          updated_at?: string
+        }
+        Update: {
+          address?: string
+          avg_price?: number | null
+          coin?: string
+          created_at?: string
+          end_time?: number | null
+          filled_size?: number | null
+          id?: string
+          is_active?: boolean | null
+          last_fill_time?: number | null
+          remaining_size?: number
+          side?: string
+          start_time?: number
+          total_size?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whale_twaps_address_fkey"
+            columns: ["address"]
+            isOneToOne: false
+            referencedRelation: "whale_addresses"
+            referencedColumns: ["address"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
