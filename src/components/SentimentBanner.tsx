@@ -435,6 +435,13 @@ export function SentimentBanner({ externalData }: { externalData?: SentimentData
               .map(([symbol, asset]) => (
               <div key={symbol} className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg">
                 <div className="flex items-center gap-3">
+                  {['BTC', 'ETH', 'HYPE'].includes(symbol) && (
+                    <img 
+                      src={`https://app.hyperliquid.xyz/coins/${symbol}_spot.svg`}
+                      alt={symbol}
+                      className="w-6 h-6 rounded-full"
+                    />
+                  )}
                   <span className="font-semibold text-foreground w-14">{symbol}</span>
                   <span className="text-lg font-medium text-foreground">
                     {formatPrice(asset.price)}
