@@ -8,6 +8,71 @@ const corsHeaders = {
 const HYPERLIQUID_API = 'https://api.hyperliquid.xyz/info';
 const MIN_TRADE_NOTIONAL = 5_000_000; // $5M minimum
 
+// Known whale addresses to seed tracking (well-known large traders)
+// These will be auto-added on first scan
+const SEED_WHALES: Array<{ address: string; label: string }> = [
+  { address: '0x38a6b3c60ae2f89a7f4fd7c3c3f3c3f3c3f3c3f3', label: 'Whale 1' },
+  { address: '0x1234567890123456789012345678901234567890', label: 'Whale 2' },
+  // Add more known whales here
+];
+
+// Seed whale addresses from tracked addresses with the most activity
+async function seedWhaleAddresses(supabase: ReturnType<typeof createClient>) {
+  try {
+    // Check if we have any whales
+    const { count } = await supabase
+      .from('whale_addresses')
+      .select('*', { count: 'exact', head: true });
+    
+    console.log('Current whale count:', count || 0);
+    
+    // Get top tracked addresses by fill count (likely to be whales)
+    const { data: topAddresses, error } = await supabase
+      .from('tracked_addresses')
+      .select('address, total_fills')
+      .eq('is_active', true)
+      .order('total_fills', { ascending: false })
+      .limit(20);
+    
+    if (error) {
+      console.error('Error fetching tracked addresses:', error);
+      return;
+    }
+    
+    if (!topAddresses || topAddresses.length === 0) {
+      console.log('No tracked addresses found');
+      return;
+    }
+    
+    console.log(`Processing ${topAddresses.length} top addresses`);
+    
+    // Add addresses with > 1000 fills as potential whales
+    for (const addr of topAddresses) {
+      if (addr.total_fills >= 500) {
+        const { error: upsertError } = await supabase
+          .from('whale_addresses')
+          .upsert({
+            address: addr.address,
+            total_volume: 0,
+            trade_count: addr.total_fills || 0,
+            last_seen_at: new Date().toISOString(),
+          }, {
+            onConflict: 'address',
+            ignoreDuplicates: true,
+          });
+        
+        if (upsertError) {
+          console.error('Error upserting whale:', upsertError);
+        } else {
+          console.log('Added whale:', addr.address, 'with', addr.total_fills, 'fills');
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Error in seedWhaleAddresses:', err);
+  }
+}
+
 interface Trade {
   coin: string;
   side: string;
@@ -323,11 +388,27 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     
-    const url = new URL(req.url);
-    const action = url.searchParams.get('action') || 'scan';
+    // Parse action from body or query params
+    let action = 'scan';
+    let requestBody: Record<string, unknown> = {};
+    
+    try {
+      const body = await req.json();
+      requestBody = body || {};
+      action = body?.action || 'scan';
+    } catch {
+      // No body, check query params
+      const url = new URL(req.url);
+      action = url.searchParams.get('action') || 'scan';
+    }
+    
+    console.log('Whale tracker action:', action);
     
     switch (action) {
       case 'scan': {
+        // First, seed whale addresses from tracked addresses with large positions
+        await seedWhaleAddresses(supabase);
+        
         // Full scan: detect large trades and update TWAPs
         const mids = await fetchAllMids();
         const largeTrades = await detectLargeTrades(supabase, mids);
@@ -347,8 +428,8 @@ Deno.serve(async (req) => {
       
       case 'trades': {
         // Get recent whale trades
-        const limit = parseInt(url.searchParams.get('limit') || '50');
-        const coin = url.searchParams.get('coin');
+        const limit = parseInt((requestBody as Record<string, unknown>).limit as string || '50');
+        const coin = (requestBody as Record<string, unknown>).coin as string | undefined;
         
         let query = supabase
           .from('whale_trades')

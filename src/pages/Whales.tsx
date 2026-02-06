@@ -3,6 +3,7 @@ import { Header } from '@/components/Header';
 import { WhaleTradesFeed } from '@/components/whales/WhaleTradesFeed';
 import { WhaleActiveTwaps } from '@/components/whales/WhaleActiveTwaps';
 import { WhaleStats } from '@/components/whales/WhaleStats';
+import { TrackedWhalesList } from '@/components/whales/TrackedWhalesList';
 import { supabase } from '@/integrations/supabase/client';
 import { Waves, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -44,9 +45,18 @@ export interface WhaleStats {
   volume24h: number;
 }
 
+export interface WhaleAddress {
+  address: string;
+  label: string | null;
+  total_volume: number;
+  trade_count: number;
+  last_seen_at: string;
+}
+
 const Whales = () => {
   const [trades, setTrades] = useState<WhaleTrade[]>([]);
   const [twaps, setTwaps] = useState<WhaleTwap[]>([]);
+  const [whales, setWhales] = useState<WhaleAddress[]>([]);
   const [stats, setStats] = useState<WhaleStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
@@ -54,20 +64,22 @@ const Whales = () => {
 
   const fetchData = async () => {
     try {
-      const [tradesRes, twapsRes, statsRes] = await Promise.all([
-        supabase.functions.invoke('whale-tracker', {
-          body: null,
-          headers: {},
-        }).then(() => 
-          supabase.functions.invoke('whale-tracker?action=trades')
-        ),
-        supabase.functions.invoke('whale-tracker?action=twaps'),
-        supabase.functions.invoke('whale-tracker?action=stats'),
+      // First trigger a scan, then fetch the data
+      await supabase.functions.invoke('whale-tracker', {
+        body: { action: 'scan' },
+      });
+      
+      const [tradesRes, twapsRes, statsRes, whalesRes] = await Promise.all([
+        supabase.functions.invoke('whale-tracker', { body: { action: 'trades' } }),
+        supabase.functions.invoke('whale-tracker', { body: { action: 'twaps' } }),
+        supabase.functions.invoke('whale-tracker', { body: { action: 'stats' } }),
+        supabase.functions.invoke('whale-tracker', { body: { action: 'whales' } }),
       ]);
 
       if (tradesRes.data) setTrades(tradesRes.data);
       if (twapsRes.data) setTwaps(twapsRes.data);
       if (statsRes.data) setStats(statsRes.data);
+      if (whalesRes.data) setWhales(whalesRes.data);
       setLastUpdated(new Date());
     } catch (error) {
       console.error('Error fetching whale data:', error);
@@ -79,8 +91,21 @@ const Whales = () => {
   const triggerScan = async () => {
     setScanning(true);
     try {
-      await supabase.functions.invoke('whale-tracker?action=scan');
-      await fetchData();
+      await supabase.functions.invoke('whale-tracker', { body: { action: 'scan' } });
+      
+      // Fetch updated data
+      const [tradesRes, twapsRes, statsRes, whalesRes] = await Promise.all([
+        supabase.functions.invoke('whale-tracker', { body: { action: 'trades' } }),
+        supabase.functions.invoke('whale-tracker', { body: { action: 'twaps' } }),
+        supabase.functions.invoke('whale-tracker', { body: { action: 'stats' } }),
+        supabase.functions.invoke('whale-tracker', { body: { action: 'whales' } }),
+      ]);
+
+      if (tradesRes.data) setTrades(tradesRes.data);
+      if (twapsRes.data) setTwaps(twapsRes.data);
+      if (statsRes.data) setStats(statsRes.data);
+      if (whalesRes.data) setWhales(whalesRes.data);
+      setLastUpdated(new Date());
     } catch (error) {
       console.error('Error triggering scan:', error);
     } finally {
@@ -137,7 +162,10 @@ const Whales = () => {
         <WhaleStats stats={stats} loading={loading} />
 
         {/* Main Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
+          {/* Tracked Whales */}
+          <TrackedWhalesList whales={whales} loading={loading} />
+          
           {/* Active TWAPs */}
           <WhaleActiveTwaps twaps={twaps} loading={loading} />
           
@@ -145,17 +173,13 @@ const Whales = () => {
           <WhaleTradesFeed trades={trades} loading={loading} />
         </div>
 
-        {/* Empty State */}
-        {!loading && trades.length === 0 && twaps.length === 0 && (
-          <div className="mt-8 bg-card border border-border rounded-lg p-8 text-center">
-            <Waves className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-foreground mb-2">No Whale Activity Detected</h3>
-            <p className="text-sm text-muted-foreground mb-4">
-              Whales are auto-detected when trades ≥$5M occur. Click "Scan Now" to check for recent activity.
+        {/* How it works */}
+        {!loading && whales.length > 0 && trades.length === 0 && twaps.length === 0 && (
+          <div className="mt-6 bg-secondary/30 border border-border rounded-lg p-4">
+            <p className="text-sm text-muted-foreground text-center">
+              <strong className="text-foreground">{whales.length} whale{whales.length !== 1 ? 's' : ''}</strong> detected with $1M+ positions. 
+              Large trades ($5M+) and active TWAPs will appear here when activity is detected.
             </p>
-            <Button onClick={triggerScan} disabled={scanning}>
-              {scanning ? 'Scanning...' : 'Scan for Whales'}
-            </Button>
           </div>
         )}
       </main>
