@@ -449,6 +449,13 @@ export function SentimentBanner({ externalData }: { externalData?: SentimentData
                       className="w-6 h-6 rounded-full"
                     />
                   )}
+                  {symbol === 'SILVER' && (
+                    <img 
+                      src="https://s3-symbol-logo.tradingview.com/metal/silver--big.svg"
+                      alt="SILVER"
+                      className="w-6 h-6 rounded-full"
+                    />
+                  )}
                   <span className="font-semibold text-foreground w-14">{symbol}</span>
                   <span className="text-lg font-medium text-foreground">
                     {formatPrice(asset.price)}
