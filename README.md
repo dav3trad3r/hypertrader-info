@@ -17,7 +17,8 @@
 ## Tech Stack
 
 - **Frontend**: React, TypeScript, Vite, Tailwind CSS, shadcn/ui
-- **Backend**: Lovable Cloud (Edge Functions)
+- **Backend**: Supabase Edge Functions (`supabase/functions`)
+- **Hosting**: Railway
 - **Data**: Hyperliquid API
 - **Charts**: Recharts
 
@@ -47,13 +48,16 @@ The app uses an edge function proxy that provides:
 # Install dependencies
 npm install
 
-# Start dev server
+# Copy env and fill in the Supabase project values (see CONTRIBUTING.md to run Supabase locally)
+cp .env.example .env
+
+# Start dev server (http://localhost:8080)
 npm run dev
 ```
 
 ## Environment Variables
 
-The following are automatically configured via Lovable Cloud:
+Set these in `.env` locally and as service variables on Railway. They are read at build time, so a Railway redeploy is needed after changing them:
 
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_PUBLISHABLE_KEY`
@@ -81,6 +85,10 @@ Proxies requests to Hyperliquid API with caching and rate limiting.
 - `X-Cache: HIT` — Served from cache
 - `X-Cache: MISS` — Fresh from Hyperliquid
 
+## Contributing
+
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to run the full stack locally and open a pull request.
+
 ## License
 
-MIT
+[MIT](LICENSE)
