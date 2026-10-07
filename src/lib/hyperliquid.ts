@@ -201,79 +201,6 @@ export interface TradingSummary {
   accountValue?: number;
 }
 
-export interface AccountState {
-  marginSummary: {
-    accountValue: string;
-    totalMarginUsed: string;
-    totalNtlPos: string;
-  };
-  withdrawable: string;
-}
-
-// Fetch current account state (balance) from both main and xyz dex
-export async function fetchAccountState(address: string): Promise<AccountState | null> {
-  try {
-    // Fetch both main dex and xyz dex account states in parallel
-    const [mainResponse, xyzResponse] = await Promise.all([
-      fetch("https://api.hyperliquid.xyz/info", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          type: "clearinghouseState",
-          user: address 
-        }),
-      }),
-      fetch("https://api.hyperliquid.xyz/info", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          type: "clearinghouseState",
-          user: address,
-          dex: "xyz"
-        }),
-      }),
-    ]);
-    
-    let totalAccountValue = 0;
-    let totalMarginUsed = 0;
-    let totalWithdrawable = 0;
-    
-    if (mainResponse.ok) {
-      const mainData = await mainResponse.json();
-      if (mainData?.marginSummary?.accountValue) {
-        totalAccountValue += parseFloat(mainData.marginSummary.accountValue);
-        totalMarginUsed += parseFloat(mainData.marginSummary.totalMarginUsed || '0');
-        totalWithdrawable += parseFloat(mainData.withdrawable || '0');
-      }
-    }
-    
-    if (xyzResponse.ok) {
-      const xyzData = await xyzResponse.json();
-      if (xyzData?.marginSummary?.accountValue) {
-        totalAccountValue += parseFloat(xyzData.marginSummary.accountValue);
-        totalMarginUsed += parseFloat(xyzData.marginSummary.totalMarginUsed || '0');
-        totalWithdrawable += parseFloat(xyzData.withdrawable || '0');
-      }
-    }
-    
-    if (totalAccountValue === 0) {
-      return null;
-    }
-    
-    return {
-      marginSummary: {
-        accountValue: String(totalAccountValue),
-        totalMarginUsed: String(totalMarginUsed),
-        totalNtlPos: '0',
-      },
-      withdrawable: String(totalWithdrawable),
-    };
-  } catch (error) {
-    console.error('Error fetching account state:', error);
-    return null;
-  }
-}
-
 export interface UserTradingData {
   fills: Fill[];
   dailyPnL: DailyPnL[];
@@ -284,6 +211,55 @@ export interface UserTradingData {
 }
 
 const HYPERLIQUID_API = "https://api.hyperliquid.xyz/info";
+
+// Direct API call that backs off and retries when rate limited or on a server error.
+// The limit is per minute per IP, so a short wait usually clears it; returning the
+// error straight away would make callers treat a 429 as the end of the data.
+async function postInfoDirect(payload: object, attempts = 4): Promise<Response> {
+  for (let attempt = 1; ; attempt++) {
+    const response = await fetch(HYPERLIQUID_API, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if ((response.status !== 429 && response.status < 500) || attempt >= attempts) return response;
+    await new Promise(resolve => setTimeout(resolve, 2000 * 2 ** (attempt - 1)));
+  }
+}
+
+// Total account value as Hyperliquid computes it: perps on every dex plus spot, and the
+// right total for unified accounts (where perp margin is a hold on spot USDC, so adding
+// the per-dex perp values to spot would double count, and perps alone miss free USDC).
+export async function fetchAccountValue(address: string): Promise<number | null> {
+  try {
+    const response = await makeApiRequest({ type: "portfolio", user: address });
+    if (!response.ok) return null;
+    const portfolio: Array<[string, { accountValueHistory?: Array<[number, string]> }]> = await response.json();
+    const periods = new Map(portfolio);
+    const history = periods.get("day")?.accountValueHistory ?? periods.get("allTime")?.accountValueHistory;
+    if (!history?.length) return null;
+    const value = parseFloat(history[history.length - 1][1]);
+    return Number.isFinite(value) ? value : null;
+  } catch (error) {
+    console.error('Error fetching account value:', error);
+    return null;
+  }
+}
+
+let perpDexNamesPromise: Promise<string[]> | null = null;
+
+// Every perp dex: '' is the main dex, the rest are HIP-3 dexes (xyz, flx, ...)
+export function getPerpDexNames(): Promise<string[]> {
+  perpDexNamesPromise ??= postInfoDirect({ type: "perpDexs" })
+    .then(response => (response.ok ? response.json() : Promise.reject(new Error(`perpDexs ${response.status}`))))
+    .then((dexes: Array<{ name: string } | null>) => dexes.map(dex => dex?.name ?? ''))
+    .catch(error => {
+      console.warn('Could not list perp dexes, using main + xyz:', error);
+      perpDexNamesPromise = null;
+      return ['', 'xyz'];
+    });
+  return perpDexNamesPromise;
+}
 
 // Get the proxy URL for edge function
 function getProxyUrl(): string | null {
@@ -329,42 +305,35 @@ async function makeApiRequest(payload: object): Promise<Response> {
   }
   
   // Fallback to direct API
-  return fetch(HYPERLIQUID_API, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-  });
+  return postInfoDirect(payload);
 }
 
 const FUNDING_PAGE_SIZE = 500;
 const MAX_FUNDING_REQUESTS = 40;
+const HOUR_MS = 60 * 60 * 1000;
+const MAX_FUNDING_WINDOW = 90 * 24 * HOUR_MS;
 
 // Fetch funding payments from newest to oldest, back to startTime.
-// Each request covers a time window; a full page means the window was too wide,
-// so it is shrunk and retried. Goes direct to the API so long funding histories
-// don't eat into the proxy's per-address rate limit.
+// Each request covers a time window sized to the account's funding density: a full
+// page means the window was too wide (halve it and retry), a sparse one means the
+// next window can be wider. Goes direct to the API so long funding histories don't
+// eat into the proxy's per-address rate limit.
 export async function fetchUserFunding(address: string, startTime: number): Promise<FundingPayment[]> {
   const payments: FundingPayment[] = [];
   let end = Date.now();
-  let window = 30 * 24 * 60 * 60 * 1000;
+  let window = 30 * 24 * HOUR_MS;
 
   for (let request = 0; request < MAX_FUNDING_REQUESTS && end > startTime; request++) {
     const from = Math.max(startTime, end - window);
-    const response = await fetch(HYPERLIQUID_API, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: 'userFunding', user: address, startTime: from, endTime: end }),
-    });
+    const response = await postInfoDirect({ type: 'userFunding', user: address, startTime: from, endTime: end });
     if (!response.ok) {
       console.warn(`Funding request failed (${response.status}); using ${payments.length} payments loaded so far`);
       break;
     }
 
     const rows: Array<{ time: number; delta: { type: string; coin: string; usdc: string } }> = await response.json();
-    if (rows.length >= FUNDING_PAGE_SIZE && window > 60 * 60 * 1000) {
-      window = Math.max(60 * 60 * 1000, Math.floor(window / 4));
+    if (rows.length >= FUNDING_PAGE_SIZE && window > HOUR_MS) {
+      window = Math.max(HOUR_MS, Math.floor(window / 2));
       continue;
     }
 
@@ -374,14 +343,20 @@ export async function fetchUserFunding(address: string, startTime: number): Prom
       }
     }
     end = from - 1;
+    if (rows.length < FUNDING_PAGE_SIZE / 2) window = Math.min(MAX_FUNDING_WINDOW, window * 2);
   }
 
+  if (end > startTime) {
+    console.warn(`Funding loaded back to ${new Date(end).toISOString()} only (request cap reached)`);
+  }
   return payments.sort((a, b) => a.time - b.time);
 }
 
 // API limits
 const FILLS_PER_REQUEST = 2000;
-const MAX_ACCESSIBLE_FILLS = 10000; // Hyperliquid only allows access to most recent 10K fills
+// Hyperliquid documents access to the most recent ~10K fills; at or near this many,
+// older history may be cut off (used only to flag that, never to stop fetching)
+const MAX_ACCESSIBLE_FILLS = 10000;
 
 function getFillTime(fill: Partial<Fill> & Record<string, unknown>): number | null {
   // Defensive parsing in case API changes types
@@ -439,13 +414,16 @@ export async function fetchAllAvailableFills(address: string): Promise<FetchFill
   const fixedEndTime = Date.now();
   let currentStart = 0;
   let requestCount = 0;
-  const maxRequests = 50; // More headroom for high-volume accounts
+  // Fetching runs oldest-first, so stopping early would drop the NEWEST fills:
+  // keep paging until the API returns a short page. This cap is only a runaway guard.
+  const maxRequests = 200;
   let hitApiLimit = false;
   let consecutiveNoProgress = 0;
+  let consecutiveErrors = 0;
   
   console.log(`Fetching all available fills for ${address}...`);
   
-  while (requestCount < maxRequests && allFills.length < MAX_ACCESSIBLE_FILLS) {
+  while (requestCount < maxRequests) {
     requestCount++;
     
     try {
@@ -462,7 +440,8 @@ export async function fetchAllAvailableFills(address: string): Promise<FetchFill
       }
 
       const fills: Fill[] = await response.json();
-      
+      consecutiveErrors = 0;
+
       if (!fills || fills.length === 0) {
         console.log(`No more fills available after ${requestCount} requests`);
         break;
@@ -522,17 +501,17 @@ export async function fetchAllAvailableFills(address: string): Promise<FetchFill
         currentStart = currentStart + 1;
       }
       
-      // Check if we've hit the 10K API limit
-      if (allFills.length >= MAX_ACCESSIBLE_FILLS) {
-        hitApiLimit = true;
-        console.log(`Hit the ${MAX_ACCESSIBLE_FILLS} fill API limit`);
-        break;
-      }
-      
     } catch (error) {
+      // Retry before giving up: breaking here would also drop every newer fill
       console.error("Error fetching fills:", error);
-      break;
+      if (++consecutiveErrors >= 3) break;
+      await new Promise(resolve => setTimeout(resolve, 1000 * consecutiveErrors));
     }
+  }
+
+  if (requestCount >= maxRequests) {
+    console.warn(`Stopped after ${maxRequests} requests; the newest fills may be missing`);
+    hitApiLimit = true;
   }
   
   // Sort by time descending (most recent first)

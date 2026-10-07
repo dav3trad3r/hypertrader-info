@@ -1,6 +1,7 @@
 import { useState, useEffect, memo } from 'react';
 import { Activity, ArrowUpRight, ArrowDownRight, Zap, Clock, TrendingUp, TrendingDown, AlertTriangle } from 'lucide-react';
 import { cn, formatCurrency, formatSize } from '@/lib/utils';
+import { getPerpDexNames } from '@/lib/hyperliquid';
 import { Progress } from '@/components/ui/progress';
 import { CoinIcon } from '@/components/CoinIcon';
 
@@ -252,7 +253,7 @@ const PerpPositionItem = memo(function PerpPositionItem({
               "font-mono text-sm font-semibold",
               isProfitable ? "text-profit" : "text-loss"
             )}>
-              {isProfitable ? '+' : ''}${unrealizedPnl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              {unrealizedPnl > 0 ? '+' : unrealizedPnl < 0 ? '-' : ''}${Math.abs(unrealizedPnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
             <span className={cn(
               "text-xs font-mono",
@@ -279,7 +280,7 @@ const PerpPositionItem = memo(function PerpPositionItem({
                 "font-mono",
                 fundingPositive ? "text-profit" : "text-loss"
               )}>
-                {fundingPositive ? '+' : ''}${fundingPnlImpact.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                {fundingPnlImpact > 0 ? '+' : fundingPnlImpact < 0 ? '-' : ''}${Math.abs(fundingPnlImpact).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
             </div>
           )}
@@ -492,8 +493,12 @@ export function LiveTrades({ address, marketType }: LiveTradesProps) {
 
     const fetchPositions = async () => {
       try {
+        // Every other HIP-3 dex (flx, vntl, ...) goes direct to the API: it is polled every
+        // 10s and would otherwise blow through the proxy's per-address rate limit
+        const otherDexes = (await getPerpDexNames()).filter(dex => dex !== '' && dex !== 'xyz');
+
         // Fetch perp (main dex), HIP-3 perp (xyz dex), spot positions, TWAP history, and slice fills in parallel
-        const [perpResponse, xyzPerpResponse, spotResponse, twapHistoryResponse, xyzTwapHistoryResponse, sliceFillsResponse] = await Promise.all([
+        const [perpResponse, xyzPerpResponse, spotResponse, twapHistoryResponse, xyzTwapHistoryResponse, sliceFillsResponse, ...otherDexResponses] = await Promise.all([
           makeApiRequest({
             type: "clearinghouseState",
             user: address,
@@ -520,6 +525,11 @@ export function LiveTrades({ address, marketType }: LiveTradesProps) {
             type: "userTwapSliceFills",
             user: address,
           }),
+          ...otherDexes.map(dex => fetch(HYPERLIQUID_API, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ type: "clearinghouseState", user: address, dex }),
+          })),
         ]);
 
         // Parse slice fills to calculate actual executed amounts per twapId
@@ -543,58 +553,31 @@ export function LiveTrades({ address, marketType }: LiveTradesProps) {
           ...spotPositions.map(p => p.coin),
         ]);
 
-        // Process perp positions from main dex
-        let mainPerps: PerpPosition[] = [];
-        if (perpResponse.ok) {
-          const perpData: ClearinghouseState = await perpResponse.json();
-          if (perpData?.assetPositions) {
-            mainPerps = perpData.assetPositions
-              .filter(ap => parseFloat(ap.position.szi) !== 0)
-              .map(ap => ({
-                type: 'perp' as const,
-                coin: ap.position.coin,
-                szi: ap.position.szi,
-                entryPx: ap.position.entryPx,
-                positionValue: ap.position.positionValue,
-                unrealizedPnl: ap.position.unrealizedPnl,
-                returnOnEquity: ap.position.returnOnEquity,
-                leverage: ap.position.leverage,
-                liquidationPx: ap.position.liquidationPx,
-                cumFunding: {
-                  allTime: ap.position.cumFunding?.allTime || '0',
-                  sinceOpen: ap.position.cumFunding?.sinceOpen || '0',
-                },
-              }));
-          }
-        }
-
-        // Process HIP-3 perp positions from xyz dex
-        let xyzPerps: PerpPosition[] = [];
-        if (xyzPerpResponse.ok) {
-          const xyzData: ClearinghouseState = await xyzPerpResponse.json();
-          if (xyzData?.assetPositions) {
-            xyzPerps = xyzData.assetPositions
-              .filter(ap => parseFloat(ap.position.szi) !== 0)
-              .map(ap => ({
-                type: 'perp' as const,
-                coin: ap.position.coin,
-                szi: ap.position.szi,
-                entryPx: ap.position.entryPx,
-                positionValue: ap.position.positionValue,
-                unrealizedPnl: ap.position.unrealizedPnl,
-                returnOnEquity: ap.position.returnOnEquity,
-                leverage: ap.position.leverage,
-                liquidationPx: ap.position.liquidationPx,
-                cumFunding: {
-                  allTime: ap.position.cumFunding?.allTime || '0',
-                  sinceOpen: ap.position.cumFunding?.sinceOpen || '0',
-                },
-              }));
-          }
-        }
-
-        // Combine both dex positions
-        setPerpPositions([...mainPerps, ...xyzPerps]);
+        // Open perp positions from every dex (main, xyz and the other HIP-3 dexes)
+        const toPerpPositions = (state: ClearinghouseState | null): PerpPosition[] =>
+          (state?.assetPositions ?? [])
+            .filter(ap => parseFloat(ap.position.szi) !== 0)
+            .map(ap => ({
+              type: 'perp' as const,
+              coin: ap.position.coin,
+              szi: ap.position.szi,
+              entryPx: ap.position.entryPx,
+              positionValue: ap.position.positionValue,
+              unrealizedPnl: ap.position.unrealizedPnl,
+              returnOnEquity: ap.position.returnOnEquity,
+              leverage: ap.position.leverage,
+              liquidationPx: ap.position.liquidationPx,
+              cumFunding: {
+                allTime: ap.position.cumFunding?.allTime || '0',
+                sinceOpen: ap.position.cumFunding?.sinceOpen || '0',
+              },
+            }));
+        const perpStates = await Promise.all(
+          [perpResponse, xyzPerpResponse, ...otherDexResponses].map(response =>
+            response.ok ? (response.json() as Promise<ClearinghouseState>) : Promise.resolve(null)
+          )
+        );
+        setPerpPositions(perpStates.flatMap(toPerpPositions));
 
         // Process spot positions
         if (spotResponse.ok) {

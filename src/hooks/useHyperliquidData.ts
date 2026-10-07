@@ -3,8 +3,8 @@ import {
   fetchAllAvailableFills,
   fetchFillsForMonth, 
   fetchFillsSince,
-  fetchAccountState,
-  fetchUserFunding,
+  fetchAccountValue,
+fetchUserFunding,
   isValidAddress,
   filterFillsByMarket,
   processDailyPnL,
@@ -322,15 +322,14 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
       });
       
       // Step 2: Simultaneously fetch from Hyperliquid API for immediate display
-      // Also fetch account state for balance
-      const [apiResult, accountState] = await Promise.all([
+      // Also fetch the account's total value for the balance card
+      const [apiResult, totalValue] = await Promise.all([
         fetchAllAvailableFills(resolvedAddress),
-        fetchAccountState(resolvedAddress)
+        fetchAccountValue(resolvedAddress)
       ]);
-      
-      // Set account value if available
-      if (accountState?.marginSummary?.accountValue) {
-        setAccountValue(parseFloat(accountState.marginSummary.accountValue));
+
+      if (totalValue !== null) {
+        setAccountValue(totalValue);
       }
       
       if (apiResult.fills.length === 0) {
@@ -529,9 +528,9 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
       }
 
       // Also refresh account value
-      const accountState = await fetchAccountState(address);
-      if (accountState?.marginSummary?.accountValue) {
-        setAccountValue(parseFloat(accountState.marginSummary.accountValue));
+      const totalValue = await fetchAccountValue(address);
+      if (totalValue !== null) {
+        setAccountValue(totalValue);
       }
       
       setLastRefreshed(new Date());

@@ -13,19 +13,20 @@ export function cn(...inputs: ClassValue[]) {
  */
 export function formatCurrency(value: number, includeDollarSign = true, includeSign = false): string {
   const absValue = Math.abs(value);
-  const sign = includeSign ? (value >= 0 ? '+' : '') : '';
+  // The minus goes before the $ (-$12.50, not $-12.50); amounts that round to $0.00 get none
+  const sign = value < 0 && absValue >= 0.005 ? '-' : includeSign && value >= 0 ? '+' : '';
   const prefix = includeDollarSign ? '$' : '';
-  
+
   if (absValue >= 1000000000) {
-    return `${sign}${prefix}${(value / 1000000000).toFixed(2)}B`;
+    return `${sign}${prefix}${(absValue / 1000000000).toFixed(2)}B`;
   }
   if (absValue >= 1000000) {
-    return `${sign}${prefix}${(value / 1000000).toFixed(2)}M`;
+    return `${sign}${prefix}${(absValue / 1000000).toFixed(2)}M`;
   }
   if (absValue >= 1000) {
-    return `${sign}${prefix}${(value / 1000).toFixed(2)}K`;
+    return `${sign}${prefix}${(absValue / 1000).toFixed(2)}K`;
   }
-  return `${sign}${prefix}${value.toFixed(2)}`;
+  return `${sign}${prefix}${absValue.toFixed(2)}`;
 }
 
 /**
