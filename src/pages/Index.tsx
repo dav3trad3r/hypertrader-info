@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useHyperliquidData } from '@/hooks/useHyperliquidData';
 import { Header } from '@/components/Header';
+import { REPO_URL } from '@/lib/links';
 import { AddressSearch } from '@/components/AddressSearch';
 import { PnLCalendar } from '@/components/PnLCalendar';
 import { SummaryStats } from '@/components/SummaryStats';
@@ -295,7 +296,7 @@ const Index = () => {
       <footer className="border-t border-border mt-12 py-6">
         <div className="container mx-auto px-4 text-center">
           <p className="text-xs text-muted-foreground">
-            <span className="font-medium text-foreground">HyperTrader</span> • Data sourced from Hyperliquid API • Not financial advice
+            <span className="font-medium text-foreground">HyperTrader</span> • Data sourced from Hyperliquid API • Not financial advice • <a href={REPO_URL} target="_blank" rel="noopener noreferrer" className="hover:text-foreground underline-offset-2 hover:underline">Open source on GitHub</a>
           </p>
         </div>
       </footer>

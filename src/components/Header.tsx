@@ -1,7 +1,8 @@
-import { TrendingUp, Menu } from 'lucide-react';
+import { TrendingUp, Menu, Github } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
+import { REPO_URL } from '@/lib/links';
 
 export function Header() {
   const location = useLocation();
@@ -19,7 +20,7 @@ export function Header() {
                 <h1 className="text-xl font-bold text-foreground">
                   Hyper<span className="text-primary">Trader</span>
                 </h1>
-                <p className="text-xs text-muted-foreground">Hyperliquid PnL Tracker & Analytics</p>
+                <p className="text-xs text-muted-foreground">Open-source Hyperliquid PnL Tracker & Analytics</p>
               </div>
             </Link>
             
@@ -39,10 +40,16 @@ export function Header() {
           </div>
           
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1.5">
-              <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-              <span className="text-xs text-muted-foreground">Live Data</span>
-            </div>
+            <a
+              href={REPO_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Open source on GitHub"
+              title="Open source on GitHub"
+              className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+            >
+              <Github className="w-5 h-5" />
+            </a>
             
             {/* Mobile Menu */}
             <Sheet>
