@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Header } from '@/components/Header';
-import { REPO_URL } from '@/lib/links';
+import { OpenSourceLinks } from '@/components/OpenSourceLinks';
 import { SentimentBanner, useSentimentData } from '@/components/SentimentBanner';
 import { ShareSentimentCard } from '@/components/ShareSentimentCard';
 import naganoLogo from '@/assets/nagano-ai-logo.jpg';
@@ -57,7 +57,7 @@ const Sentiment = () => {
       <footer className="border-t border-border mt-12 py-6">
         <div className="container mx-auto px-4 text-center">
           <p className="text-xs text-muted-foreground">
-            <span className="font-medium text-foreground">HyperTrader</span> • Sentiment data by NaganoAI • Not financial advice • <a href={REPO_URL} target="_blank" rel="noopener noreferrer" className="hover:text-foreground underline-offset-2 hover:underline">Open source on GitHub</a>
+            <span className="font-medium text-foreground">HyperTrader</span> • Sentiment data by NaganoAI • Not financial advice<OpenSourceLinks />
           </p>
         </div>
       </footer>

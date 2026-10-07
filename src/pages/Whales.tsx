@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Header } from '@/components/Header';
-import { REPO_URL } from '@/lib/links';
+import { OpenSourceLinks } from '@/components/OpenSourceLinks';
 import { WhaleTradesFeed } from '@/components/whales/WhaleTradesFeed';
 import { WhaleActiveTwaps } from '@/components/whales/WhaleActiveTwaps';
 import { WhaleStats } from '@/components/whales/WhaleStats';
@@ -174,7 +174,7 @@ const Whales = () => {
       <footer className="border-t border-border mt-12 py-6">
         <div className="container mx-auto px-4 text-center">
           <p className="text-xs text-muted-foreground">
-            <span className="font-medium text-foreground">HyperTrader</span> • Whale tracking auto-detects addresses with $5M+ trades • <a href={REPO_URL} target="_blank" rel="noopener noreferrer" className="hover:text-foreground underline-offset-2 hover:underline">Open source on GitHub</a>
+            <span className="font-medium text-foreground">HyperTrader</span> • Whale tracking auto-detects addresses with $5M+ trades<OpenSourceLinks />
           </p>
         </div>
       </footer>

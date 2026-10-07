@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Search, Loader2, X } from 'lucide-react';
+import { Search, Loader2, X, ShieldCheck } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 
@@ -77,6 +77,10 @@ export function AddressSearch({
       
       <p className="text-center text-xs text-muted-foreground mt-3">
         Enter any Hyperliquid wallet address or ENS name to view trading history
+        <span className="mt-1 flex items-center justify-center gap-1">
+          <ShieldCheck className="w-3 h-3 text-primary" />
+          Read-only: no wallet connection or keys needed
+        </span>
         <span className="block mt-1 text-muted-foreground/70">
           Note: Hyperliquid's API limits access to the most recent ~10,000 trades
         </span>
