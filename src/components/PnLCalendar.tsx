@@ -243,9 +243,10 @@ export function PnLCalendar({
               const hasData = day.trades > 0;
               const isProfitable = day.pnl >= PNL_EPSILON;
               const isLoss = day.pnl <= -PNL_EPSILON;
-              // Traded but nothing closed (or broke even): shown as flat, not as a loss
+              // Traded but nothing closed (or broke even): no result to show, so the cell
+              // looks like a no-trade day apart from its trade count
               const isFlat = hasData && !isProfitable && !isLoss;
-              const pnlText = `${isProfitable ? '+' : ''}${formatCurrency(isFlat ? 0 : day.pnl)}`;
+              const pnlText = isFlat ? 'No closed trades' : `${isProfitable ? '+' : ''}${formatCurrency(day.pnl)}`;
               const pnlColor = isProfitable ? "text-profit" : isLoss ? "text-loss" : "text-muted-foreground";
               const isSelected = selectedDate === day.date;
               
@@ -258,8 +259,8 @@ export function PnLCalendar({
                     hasData && "cursor-pointer",
                     hasData && isProfitable && "bg-profit-muted hover:bg-profit/30",
                     hasData && isLoss && "bg-loss-muted hover:bg-loss/30",
-                    isFlat && "bg-secondary hover:bg-secondary/80",
-                    !hasData && "bg-secondary/50",
+                    (!hasData || isFlat) && "bg-secondary/50",
+                    isFlat && "hover:bg-secondary",
                     isToday && "ring-1 sm:ring-2 ring-primary ring-offset-1 ring-offset-background",
                     isSelected && isProfitable && "ring-1 sm:ring-2 ring-profit glow-profit",
                     isSelected && isLoss && "ring-1 sm:ring-2 ring-loss glow-loss",
@@ -275,12 +276,14 @@ export function PnLCalendar({
                   
                   {hasData && (
                     <div className="text-right">
-                      <span className={cn(
-                        "text-[8px] sm:text-xs font-mono font-semibold block leading-none",
-                        pnlColor
-                      )}>
-                        {pnlText}
-                      </span>
+                      {!isFlat && (
+                        <span className={cn(
+                          "text-[8px] sm:text-xs font-mono font-semibold block leading-none",
+                          pnlColor
+                        )}>
+                          {pnlText}
+                        </span>
+                      )}
                       <span className="text-[7px] sm:text-[10px] text-muted-foreground hidden sm:inline">
                         {day.trades}t
                       </span>
@@ -298,7 +301,7 @@ export function PnLCalendar({
                         })}
                       </div>
                       <div className={cn(
-                        "text-lg font-mono font-bold",
+                        isFlat ? "text-sm font-medium" : "text-lg font-mono font-bold",
                         pnlColor
                       )}>
                         {pnlText}
@@ -382,10 +385,6 @@ export function PnLCalendar({
         <div className="flex items-center gap-1 sm:gap-2">
           <div className="w-2 h-2 sm:w-3 sm:h-3 rounded-sm bg-loss-muted" />
           <span className="text-[10px] sm:text-xs text-muted-foreground">Loss</span>
-        </div>
-        <div className="flex items-center gap-1 sm:gap-2">
-          <div className="w-2 h-2 sm:w-3 sm:h-3 rounded-sm bg-secondary" />
-          <span className="text-[10px] sm:text-xs text-muted-foreground">Opened only</span>
         </div>
         <div className="flex items-center gap-1 sm:gap-2">
           <div className="w-2 h-2 sm:w-3 sm:h-3 rounded-sm bg-secondary/50" />
