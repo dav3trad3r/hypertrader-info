@@ -86,8 +86,13 @@ export function SummaryStats({ summary }: SummaryStatsProps) {
               {isProfitable ? '+' : ''}{formatCurrency(summary.totalPnl)}
             </p>
             <p className="text-xs sm:text-sm text-muted-foreground mt-1">
-              {summary.totalTrades.toLocaleString()} total trades
+              {summary.totalTrades.toLocaleString()} total trades · net of fees & funding
             </p>
+            {Math.abs(summary.openPositionCosts) >= 0.005 && (
+              <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5">
+                Open positions: {formatCurrency(summary.openPositionCosts)} in fees & funding so far, counted when they close
+              </p>
+            )}
           </div>
           <div className={cn(
             "p-3 sm:p-4 rounded-full shrink-0",
@@ -128,6 +133,7 @@ export function SummaryStats({ summary }: SummaryStatsProps) {
         <StatCard
           label="Total Fees"
           value={formatCurrency(summary.totalFees)}
+          subValue={`Funding ${formatCurrency(summary.totalFunding)}`}
           icon={<DollarSign className="w-4 h-4" />}
           trend="down"
         />

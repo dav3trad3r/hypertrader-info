@@ -1,7 +1,8 @@
 import { useMemo, useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { type DailyPnL, type WeeklyPnL, type Fill, formatLocalDateKey, parseLocalDateKey } from '@/lib/hyperliquid';
+import { type DailyPnL, type WeeklyPnL, type Fill, formatLocalDateKey, parseLocalDateKey, PNL_EPSILON } from '@/lib/hyperliquid';
+import type { CostAttribution } from '@/lib/pnl';
 import { DayTradeBreakdown } from '@/components/DayTradeBreakdown';
 import { cn, formatCurrency } from '@/lib/utils';
 
@@ -9,6 +10,7 @@ interface PnLCalendarProps {
   dailyPnL: DailyPnL[];
   weeklyPnL: WeeklyPnL[];
   fills: Fill[];
+  costs?: CostAttribution;
   isLoadingMonth?: boolean;
   loadedMonths?: Set<string>;
   onLoadMonth?: (year: number, month: number) => void;
@@ -27,7 +29,8 @@ function getMonthKey(year: number, month: number): string {
 export function PnLCalendar({ 
   dailyPnL, 
   weeklyPnL, 
-  fills, 
+  fills,
+  costs,
   isLoadingMonth = false,
   loadedMonths = new Set(),
   onLoadMonth 
@@ -78,9 +81,11 @@ export function PnLCalendar({
       const dayData = pnlMap.get(dateStr) || {
         date: dateStr,
         pnl: 0,
+        grossPnl: 0,
         trades: 0,
         volume: 0,
         fees: 0,
+        funding: 0,
         wins: 0,
         losses: 0,
       };
@@ -236,8 +241,12 @@ export function PnLCalendar({
               
               const isToday = day.date === formatLocalDateKey(Date.now());
               const hasData = day.trades > 0;
-              const isProfitable = day.pnl > 0;
-              const isLoss = day.pnl < 0;
+              const isProfitable = day.pnl >= PNL_EPSILON;
+              const isLoss = day.pnl <= -PNL_EPSILON;
+              // Traded but nothing closed (or broke even): shown as flat, not as a loss
+              const isFlat = hasData && !isProfitable && !isLoss;
+              const pnlText = `${isProfitable ? '+' : ''}${formatCurrency(isFlat ? 0 : day.pnl)}`;
+              const pnlColor = isProfitable ? "text-profit" : isLoss ? "text-loss" : "text-muted-foreground";
               const isSelected = selectedDate === day.date;
               
               return (
@@ -249,6 +258,7 @@ export function PnLCalendar({
                     hasData && "cursor-pointer",
                     hasData && isProfitable && "bg-profit-muted hover:bg-profit/30",
                     hasData && isLoss && "bg-loss-muted hover:bg-loss/30",
+                    isFlat && "bg-secondary hover:bg-secondary/80",
                     !hasData && "bg-secondary/50",
                     isToday && "ring-1 sm:ring-2 ring-primary ring-offset-1 ring-offset-background",
                     isSelected && isProfitable && "ring-1 sm:ring-2 ring-profit glow-profit",
@@ -267,9 +277,9 @@ export function PnLCalendar({
                     <div className="text-right">
                       <span className={cn(
                         "text-[8px] sm:text-xs font-mono font-semibold block leading-none",
-                        isProfitable ? "text-profit" : "text-loss"
+                        pnlColor
                       )}>
-                        {isProfitable ? '+' : ''}{formatCurrency(day.pnl)}
+                        {pnlText}
                       </span>
                       <span className="text-[7px] sm:text-[10px] text-muted-foreground hidden sm:inline">
                         {day.trades}t
@@ -289,9 +299,9 @@ export function PnLCalendar({
                       </div>
                       <div className={cn(
                         "text-lg font-mono font-bold",
-                        isProfitable ? "text-profit" : "text-loss"
+                        pnlColor
                       )}>
-                        {isProfitable ? '+' : ''}{formatCurrency(day.pnl)}
+                        {pnlText}
                       </div>
                       <div className="grid grid-cols-2 gap-2 mt-2 text-xs">
                         <div>
@@ -309,6 +319,30 @@ export function PnLCalendar({
                           <span className="ml-1 font-mono">{formatCurrency(day.volume)}</span>
                         </div>
                       </div>
+                      {isFlat ? (
+                        <div className="mt-2 pt-2 border-t border-border text-[10px] text-muted-foreground">
+                          Positions opened only. Their fees and funding count on the day they close.
+                        </div>
+                      ) : (
+                        <div className="mt-2 pt-2 border-t border-border space-y-0.5 text-xs">
+                          <div className="flex justify-between gap-3">
+                            <span className="text-muted-foreground">Gross</span>
+                            <span className="font-mono">{formatCurrency(day.grossPnl)}</span>
+                          </div>
+                          <div className="flex justify-between gap-3">
+                            <span className="text-muted-foreground">Fees</span>
+                            <span className="font-mono text-loss">{formatCurrency(-day.fees)}</span>
+                          </div>
+                          {Math.abs(day.funding) >= PNL_EPSILON && (
+                            <div className="flex justify-between gap-3">
+                              <span className="text-muted-foreground">Funding</span>
+                              <span className={cn("font-mono", day.funding > 0 ? "text-profit" : "text-loss")}>
+                                {formatCurrency(day.funding)}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      )}
                       <div className="mt-2 pt-2 border-t border-border text-[10px] text-primary text-center">
                         Click to view trades
                       </div>
@@ -350,6 +384,10 @@ export function PnLCalendar({
           <span className="text-[10px] sm:text-xs text-muted-foreground">Loss</span>
         </div>
         <div className="flex items-center gap-1 sm:gap-2">
+          <div className="w-2 h-2 sm:w-3 sm:h-3 rounded-sm bg-secondary" />
+          <span className="text-[10px] sm:text-xs text-muted-foreground">Opened only</span>
+        </div>
+        <div className="flex items-center gap-1 sm:gap-2">
           <div className="w-2 h-2 sm:w-3 sm:h-3 rounded-sm bg-secondary/50" />
           <span className="text-[10px] sm:text-xs text-muted-foreground">No Trades</span>
         </div>
@@ -365,6 +403,7 @@ export function PnLCalendar({
         <DayTradeBreakdown
           date={selectedDate}
           fills={fills}
+          costs={costs}
           onClose={() => setSelectedDate(null)}
         />
       )}

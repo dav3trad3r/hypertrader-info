@@ -263,6 +263,7 @@ const Index = () => {
                       dailyPnL={displayData.dailyPnL} 
                       weeklyPnL={displayData.weeklyPnL}
                       fills={displayData.fills}
+                      costs={displayData.costs}
                       isLoadingMonth={false}
                       loadedMonths={loadedMonths}
                       onLoadMonth={loadMonth}

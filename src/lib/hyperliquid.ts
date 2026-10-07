@@ -1,5 +1,7 @@
 // Hyperliquid API Types and Services
 
+import { attributeCosts, getFillCosts, type CostAttribution, type FundingPayment } from './pnl';
+
 export type MarketType = 'all' | 'perps' | 'spot';
 
 export interface Fill {
@@ -126,13 +128,22 @@ export function filterFillsByMarket(fills: Fill[], marketType: MarketType): Fill
 
 export interface DailyPnL {
   date: string;
+  /** Net PnL of positions closed this day (after their fees and funding). */
   pnl: number;
+  /** Realized PnL before fees and funding. */
+  grossPnl: number;
   trades: number;
   volume: number;
+  /** Fees booked this day (closing fees + the opening fees of what was closed). */
   fees: number;
+  /** Funding booked this day (signed, negative = paid). */
+  funding: number;
   wins: number;
   losses: number;
 }
+
+/** Below half a cent a day or trade counts as flat ($0.00), neither a win nor a loss. */
+export const PNL_EPSILON = 0.005;
 
 export interface WeeklyPnL {
   weekStart: string;
@@ -172,7 +183,13 @@ export interface TradingSummary {
   totalPnl: number;
   totalTrades: number;
   totalVolume: number;
+  /** Every fee paid, including on positions that are still open. */
   totalFees: number;
+  /** Every funding payment (signed). */
+  totalFunding: number;
+  grossPnl: number;
+  /** Fees and funding on still-open positions, booked when they close (signed, negative = cost). */
+  openPositionCosts: number;
   winRate: number;
   bestDay: DailyPnL | null;
   worstDay: DailyPnL | null;
@@ -263,6 +280,7 @@ export interface UserTradingData {
   weeklyPnL: WeeklyPnL[];
   assetPerformance: AssetPerformance[];
   summary: TradingSummary;
+  costs: CostAttribution;
 }
 
 const HYPERLIQUID_API = "https://api.hyperliquid.xyz/info";
@@ -318,6 +336,47 @@ async function makeApiRequest(payload: object): Promise<Response> {
     },
     body: JSON.stringify(payload),
   });
+}
+
+const FUNDING_PAGE_SIZE = 500;
+const MAX_FUNDING_REQUESTS = 40;
+
+// Fetch funding payments from newest to oldest, back to startTime.
+// Each request covers a time window; a full page means the window was too wide,
+// so it is shrunk and retried. Goes direct to the API so long funding histories
+// don't eat into the proxy's per-address rate limit.
+export async function fetchUserFunding(address: string, startTime: number): Promise<FundingPayment[]> {
+  const payments: FundingPayment[] = [];
+  let end = Date.now();
+  let window = 30 * 24 * 60 * 60 * 1000;
+
+  for (let request = 0; request < MAX_FUNDING_REQUESTS && end > startTime; request++) {
+    const from = Math.max(startTime, end - window);
+    const response = await fetch(HYPERLIQUID_API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'userFunding', user: address, startTime: from, endTime: end }),
+    });
+    if (!response.ok) {
+      console.warn(`Funding request failed (${response.status}); using ${payments.length} payments loaded so far`);
+      break;
+    }
+
+    const rows: Array<{ time: number; delta: { type: string; coin: string; usdc: string } }> = await response.json();
+    if (rows.length >= FUNDING_PAGE_SIZE && window > 60 * 60 * 1000) {
+      window = Math.max(60 * 60 * 1000, Math.floor(window / 4));
+      continue;
+    }
+
+    for (const row of rows) {
+      if (row.delta?.type === 'funding') {
+        payments.push({ time: row.time, coin: row.delta.coin, usdc: parseFloat(row.delta.usdc) || 0 });
+      }
+    }
+    end = from - 1;
+  }
+
+  return payments.sort((a, b) => a.time - b.time);
 }
 
 // API limits
@@ -660,39 +719,42 @@ export async function fetchUserFills(address: string): Promise<Fill[]> {
   return fetchInitialFills(address);
 }
 
-// Process fills into daily PnL data
-export function processDailyPnL(fills: Fill[]): DailyPnL[] {
+// Process fills into daily PnL data (trade basis: costs are booked when positions close)
+export function processDailyPnL(fills: Fill[], costs: CostAttribution = attributeCosts(fills)): DailyPnL[] {
   const dailyMap = new Map<string, DailyPnL>();
-  
+
   fills.forEach(fill => {
     const date = formatLocalDateKey(fill.time);
-    const pnl = parseFloat(fill.closedPnl) || 0;
     const volume = parseFloat(fill.sz) * parseFloat(fill.px);
-    const fee = parseFloat(fill.fee) || 0;
-    
+    const fillCosts = getFillCosts(costs, fill);
+
     if (!dailyMap.has(date)) {
       dailyMap.set(date, {
         date,
         pnl: 0,
+        grossPnl: 0,
         trades: 0,
         volume: 0,
         fees: 0,
+        funding: 0,
         wins: 0,
         losses: 0,
       });
     }
-    
+
     const day = dailyMap.get(date)!;
-    day.pnl += pnl;
+    day.pnl += fillCosts.net;
+    day.grossPnl += parseFloat(fill.closedPnl) || 0;
     day.trades += 1;
     day.volume += volume;
-    day.fees += fee;
-    
-    if (pnl > 0) day.wins += 1;
-    else if (pnl < 0) day.losses += 1;
+    day.fees += fillCosts.bookedFees;
+    day.funding += fillCosts.bookedFunding;
+
+    if (fillCosts.isClose && fillCosts.net >= PNL_EPSILON) day.wins += 1;
+    else if (fillCosts.isClose && fillCosts.net <= -PNL_EPSILON) day.losses += 1;
   });
-  
-  return Array.from(dailyMap.values()).sort((a, b) => 
+
+  return Array.from(dailyMap.values()).sort((a, b) =>
     parseLocalDateKey(b.date).getTime() - parseLocalDateKey(a.date).getTime()
   );
 }
@@ -732,10 +794,15 @@ export function processWeeklyPnL(dailyPnL: DailyPnL[]): WeeklyPnL[] {
 }
 
 // Process fills into asset performance data
-export function processAssetPerformance(fills: Fill[], spotTokenCache?: Map<number, string>): AssetPerformance[] {
+export function processAssetPerformance(
+  fills: Fill[],
+  spotTokenCache?: Map<number, string>,
+  costs: CostAttribution = attributeCosts(fills),
+): AssetPerformance[] {
   const assetMap = new Map<string, {
     pnl: number;
     trades: number;
+    closes: number;
     volume: number;
     wins: number;
     losses: number;
@@ -745,20 +812,23 @@ export function processAssetPerformance(fills: Fill[], spotTokenCache?: Map<numb
   
   fills.forEach(fill => {
     const coin = getSpotTokenName(fill.coin, cache);
-    const pnl = parseFloat(fill.closedPnl) || 0;
+    const fillCosts = getFillCosts(costs, fill);
     const volume = parseFloat(fill.sz) * parseFloat(fill.px);
-    
+
     if (!assetMap.has(coin)) {
-      assetMap.set(coin, { pnl: 0, trades: 0, volume: 0, wins: 0, losses: 0 });
+      assetMap.set(coin, { pnl: 0, trades: 0, closes: 0, volume: 0, wins: 0, losses: 0 });
     }
-    
+
     const asset = assetMap.get(coin)!;
-    asset.pnl += pnl;
+    asset.pnl += fillCosts.net;
     asset.trades += 1;
     asset.volume += volume;
-    
-    if (pnl > 0) asset.wins += 1;
-    else if (pnl < 0) asset.losses += 1;
+
+    if (fillCosts.isClose) {
+      asset.closes += 1;
+      if (fillCosts.net >= PNL_EPSILON) asset.wins += 1;
+      else if (fillCosts.net <= -PNL_EPSILON) asset.losses += 1;
+    }
   });
   
   return Array.from(assetMap.entries())
@@ -767,8 +837,8 @@ export function processAssetPerformance(fills: Fill[], spotTokenCache?: Map<numb
       pnl: data.pnl,
       trades: data.trades,
       volume: data.volume,
-      winRate: data.trades > 0 ? (data.wins / data.trades) * 100 : 0,
-      avgPnl: data.trades > 0 ? data.pnl / data.trades : 0,
+      winRate: data.wins + data.losses > 0 ? (data.wins / (data.wins + data.losses)) * 100 : 0,
+      avgPnl: data.closes > 0 ? data.pnl / data.closes : 0,
     }))
     .sort((a, b) => b.pnl - a.pnl);
 }
@@ -776,42 +846,47 @@ export function processAssetPerformance(fills: Fill[], spotTokenCache?: Map<numb
 // Calculate trading summary
 export function calculateSummary(
   fills: Fill[],
-  dailyPnL: DailyPnL[]
+  dailyPnL: DailyPnL[],
+  costs: CostAttribution = attributeCosts(fills),
 ): TradingSummary {
   const totalPnl = dailyPnL.reduce((sum, d) => sum + d.pnl, 0);
+  const grossPnl = dailyPnL.reduce((sum, d) => sum + d.grossPnl, 0);
   const totalTrades = fills.length;
   const totalVolume = dailyPnL.reduce((sum, d) => sum + d.volume, 0);
-  const totalFees = dailyPnL.reduce((sum, d) => sum + d.fees, 0);
-  
-  const wins = dailyPnL.filter(d => d.pnl > 0).length;
-  const losses = dailyPnL.filter(d => d.pnl < 0).length;
-  const profitableDays = wins;
-  const losingDays = losses;
-  
+
+  // Days that only opened positions (or broke even) are flat: neither wins nor losses
+  const profitableDays = dailyPnL.filter(d => d.pnl >= PNL_EPSILON).length;
+  const losingDays = dailyPnL.filter(d => d.pnl <= -PNL_EPSILON).length;
+  const decidedDays = profitableDays + losingDays;
+
   const sortedByPnl = [...dailyPnL].sort((a, b) => b.pnl - a.pnl);
   const bestDay = sortedByPnl[0] || null;
   const worstDay = sortedByPnl[sortedByPnl.length - 1] || null;
-  
-  // Find largest single trade win/loss
+
+  // Find largest single closing trade win/loss (net of its costs)
   let largestWin = 0;
   let largestLoss = 0;
   fills.forEach(fill => {
-    const pnl = parseFloat(fill.closedPnl) || 0;
-    if (pnl > largestWin) largestWin = pnl;
-    if (pnl < largestLoss) largestLoss = pnl;
+    const { net, isClose } = getFillCosts(costs, fill);
+    if (!isClose) return;
+    if (net > largestWin) largestWin = net;
+    if (net < largestLoss) largestLoss = net;
   });
-  
+
   return {
     totalPnl,
+    grossPnl,
     totalTrades,
     totalVolume,
-    totalFees,
-    winRate: dailyPnL.length > 0 ? (profitableDays / dailyPnL.length) * 100 : 0,
+    totalFees: costs.totalFees,
+    totalFunding: costs.totalFunding,
+    openPositionCosts: costs.openFunding - costs.openFees,
+    winRate: decidedDays > 0 ? (profitableDays / decidedDays) * 100 : 0,
     bestDay,
     worstDay,
     profitableDays,
     losingDays,
-    avgDailyPnl: dailyPnL.length > 0 ? totalPnl / dailyPnL.length : 0,
+    avgDailyPnl: decidedDays > 0 ? totalPnl / decidedDays : 0,
     largestWin,
     largestLoss,
   };
@@ -823,17 +898,19 @@ export async function fetchTradingData(address: string): Promise<UserTradingData
     fetchUserFills(address),
     getSpotTokenCache(),
   ]);
-  const dailyPnL = processDailyPnL(fills);
+  const costs = attributeCosts(fills);
+  const dailyPnL = processDailyPnL(fills, costs);
   const weeklyPnL = processWeeklyPnL(dailyPnL);
-  const assetPerformance = processAssetPerformance(fills, spotCache);
-  const summary = calculateSummary(fills, dailyPnL);
-  
+  const assetPerformance = processAssetPerformance(fills, spotCache, costs);
+  const summary = calculateSummary(fills, dailyPnL, costs);
+
   return {
     fills,
     dailyPnL,
     weeklyPnL,
     assetPerformance,
     summary,
+    costs,
   };
 }
 

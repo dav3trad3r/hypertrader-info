@@ -4,6 +4,7 @@ import {
   fetchFillsForMonth, 
   fetchFillsSince,
   fetchAccountState,
+  fetchUserFunding,
   isValidAddress,
   filterFillsByMarket,
   processDailyPnL,
@@ -16,6 +17,7 @@ import {
   type MarketType,
   type Fill,
 } from '@/lib/hyperliquid';
+import { attributeCosts, type FundingPayment } from '@/lib/pnl';
 import { resolveInput, isENSName } from '@/lib/ens';
 import { toast } from '@/hooks/use-toast';
 
@@ -78,10 +80,17 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
   const [marketType, setMarketType] = useState<MarketType>('all');
   const [spotTokenCache, setSpotTokenCache] = useState<Map<number, string>>(new Map());
   const [accountValue, setAccountValue] = useState<number | null>(null);
-  
+  const [funding, setFunding] = useState<FundingPayment[]>([]);
+
   const abortControllerRef = useRef<AbortController | null>(null);
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastFillTimeRef = useRef<number>(0);
+  // Which address and start time the loaded funding covers
+  const fundingCoverageRef = useRef<{ address: string; from: number } | null>(null);
+  const fundingRef = useRef<FundingPayment[]>([]);
+  useEffect(() => {
+    fundingRef.current = funding;
+  }, [funding]);
 
   // Preload spot token cache on mount
   useEffect(() => {
@@ -107,10 +116,12 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
     const filteredFills = filterFillsByMarket(rawFills, marketType);
     if (filteredFills.length === 0) return null;
     
-    const dailyPnL = processDailyPnL(filteredFills);
+    // Spot has no funding; perps and "all" book it against the positions it was paid on
+    const costs = attributeCosts(filteredFills, marketType === 'spot' ? [] : funding);
+    const dailyPnL = processDailyPnL(filteredFills, costs);
     const weeklyPnL = processWeeklyPnL(dailyPnL);
-    const assetPerformance = processAssetPerformance(filteredFills, spotTokenCache);
-    const summary = calculateSummary(filteredFills, dailyPnL);
+    const assetPerformance = processAssetPerformance(filteredFills, spotTokenCache, costs);
+    const summary = calculateSummary(filteredFills, dailyPnL, costs);
     
     // Add account value to summary if available
     if (accountValue !== null) {
@@ -123,26 +134,45 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
       weeklyPnL,
       assetPerformance,
       summary,
+      costs,
     };
-  }, [rawFills, marketType, spotTokenCache, accountValue]);
+  }, [rawFills, marketType, spotTokenCache, accountValue, funding]);
 
   // Keep original data for reference
   const data = useMemo(() => {
     if (rawFills.length === 0) return null;
     
-    const dailyPnL = processDailyPnL(rawFills);
+    const costs = attributeCosts(rawFills, funding);
+    const dailyPnL = processDailyPnL(rawFills, costs);
     const weeklyPnL = processWeeklyPnL(dailyPnL);
-    const assetPerformance = processAssetPerformance(rawFills, spotTokenCache);
-    const summary = calculateSummary(rawFills, dailyPnL);
-    
+    const assetPerformance = processAssetPerformance(rawFills, spotTokenCache, costs);
+    const summary = calculateSummary(rawFills, dailyPnL, costs);
+
     return {
       fills: rawFills,
       dailyPnL,
       weeklyPnL,
       assetPerformance,
       summary,
+      costs,
     };
-  }, [rawFills, spotTokenCache]);
+  }, [rawFills, spotTokenCache, funding]);
+
+  // Load funding in the background once fills are in, back to the oldest loaded fill.
+  // Refetches only when older fills arrive (lazy-loaded months, merged history).
+  useEffect(() => {
+    if (!address || rawFills.length === 0) return;
+    const from = Math.min(...rawFills.map(f => f.time));
+    const covered = fundingCoverageRef.current;
+    if (covered && covered.address === address && covered.from <= from) return;
+
+    fundingCoverageRef.current = { address, from };
+    fetchUserFunding(address, from)
+      .then(payments => {
+        if (fundingCoverageRef.current?.address === address) setFunding(payments);
+      })
+      .catch(err => console.warn('Failed to load funding history:', err));
+  }, [address, rawFills]);
 
   // Track which months we've attempted to load (even if empty)
   const attemptedMonths = useRef<Set<string>>(new Set());
@@ -232,7 +262,9 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
     setEnsName(null);
     setTrackingInfo(null);
     setAccountValue(null);
-    
+    setFunding([]);
+    fundingCoverageRef.current = null;
+
     try {
       // Resolve ENS name or validate address
       let resolvedAddress: string;
@@ -445,6 +477,8 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
     setLastRefreshed(null);
     setTrackingInfo(null);
     setAccountValue(null);
+    setFunding([]);
+    fundingCoverageRef.current = null;
     lastFillTimeRef.current = 0;
   }, []);
 
@@ -480,6 +514,20 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
         });
       }
       
+      // Append funding paid since the last payment we have
+      if (fundingCoverageRef.current?.address === address) {
+        const loaded = fundingRef.current;
+        const since = loaded.length > 0 ? loaded[loaded.length - 1].time + 1 : Date.now() - 60 * 60 * 1000;
+        fetchUserFunding(address, since).then(newPayments => {
+          if (newPayments.length === 0 || fundingCoverageRef.current?.address !== address) return;
+          setFunding(prev => {
+            const last = prev.length > 0 ? prev[prev.length - 1].time : 0;
+            const fresh = newPayments.filter(p => p.time > last);
+            return fresh.length > 0 ? [...prev, ...fresh] : prev;
+          });
+        }).catch(() => {});
+      }
+
       // Also refresh account value
       const accountState = await fetchAccountState(address);
       if (accountState?.marginSummary?.accountValue) {

@@ -1,12 +1,14 @@
 import { useMemo, useState, memo } from 'react';
 import { X, ArrowUpRight, ArrowDownRight, ChevronDown } from 'lucide-react';
-import { type Fill, formatLocalDateKey, parseLocalDateKey } from '@/lib/hyperliquid';
+import { type Fill, formatLocalDateKey, parseLocalDateKey, PNL_EPSILON } from '@/lib/hyperliquid';
+import { getFillCosts, type CostAttribution, type FillCosts } from '@/lib/pnl';
 import { cn, formatCurrency } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
 interface DayTradeBreakdownProps {
   date: string;
   fills: Fill[];
+  costs?: CostAttribution;
   onClose: () => void;
 }
 
@@ -21,9 +23,11 @@ function formatTime(timestamp: number): string {
 }
 
 // Memoized row component to prevent unnecessary re-renders
-const TradeRow = memo(function TradeRow({ fill }: { fill: Fill }) {
-  const pnl = parseFloat(fill.closedPnl) || 0;
+const TradeRow = memo(function TradeRow({ fill, fillCosts }: { fill: Fill; fillCosts: FillCosts }) {
+  const gross = parseFloat(fill.closedPnl) || 0;
+  const pnl = fillCosts.net;
   const isProfitable = pnl > 0;
+  const breakdown = `Gross ${formatCurrency(gross)} · Fees ${formatCurrency(-fillCosts.bookedFees)} · Funding ${formatCurrency(fillCosts.bookedFunding)}`;
   const isBuy = fill.side === 'B';
   const coin = fill.coin.startsWith('@') ? fill.coin.slice(1) : fill.coin;
 
@@ -58,25 +62,28 @@ const TradeRow = memo(function TradeRow({ fill }: { fill: Fill }) {
         ${parseFloat(fill.px).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })}
       </td>
       <td className="py-2 px-4 text-right font-mono text-xs text-loss">
-        -${parseFloat(fill.fee).toFixed(2)}
+        -${fillCosts.fee.toFixed(2)}
       </td>
       <td className="py-2 px-4 text-right">
-        {pnl !== 0 ? (
-          <span className={cn(
-            "font-mono text-sm font-semibold",
-            isProfitable ? "text-profit" : "text-loss"
-          )}>
+        {fillCosts.isClose ? (
+          <span
+            title={breakdown}
+            className={cn(
+              "font-mono text-sm font-semibold cursor-help",
+              isProfitable ? "text-profit" : "text-loss"
+            )}
+          >
             {isProfitable ? '+' : ''}{formatCurrency(pnl)}
           </span>
         ) : (
-          <span className="text-xs text-muted-foreground">—</span>
+          <span className="text-xs text-muted-foreground" title="Opening trade: its fee is counted when the position closes">—</span>
         )}
       </td>
     </tr>
   );
 });
 
-export function DayTradeBreakdown({ date, fills, onClose }: DayTradeBreakdownProps) {
+export function DayTradeBreakdown({ date, fills, costs, onClose }: DayTradeBreakdownProps) {
   const [showAll, setShowAll] = useState(false);
 
   const dayFills = useMemo(() => {
@@ -91,22 +98,30 @@ export function DayTradeBreakdown({ date, fills, onClose }: DayTradeBreakdownPro
 
   const daySummary = useMemo(() => {
     let totalPnl = 0;
+    let grossPnl = 0;
     let totalVolume = 0;
     let totalFees = 0;
+    let totalFunding = 0;
     let wins = 0;
     let losses = 0;
 
     dayFills.forEach(fill => {
-      const pnl = parseFloat(fill.closedPnl) || 0;
-      totalPnl += pnl;
+      const fillCosts = getFillCosts(costs, fill);
+      totalPnl += fillCosts.net;
+      grossPnl += parseFloat(fill.closedPnl) || 0;
       totalVolume += parseFloat(fill.sz) * parseFloat(fill.px);
-      totalFees += parseFloat(fill.fee) || 0;
-      if (pnl > 0) wins++;
-      else if (pnl < 0) losses++;
+      totalFees += fillCosts.bookedFees;
+      totalFunding += fillCosts.bookedFunding;
+      if (fillCosts.isClose && fillCosts.net >= PNL_EPSILON) wins++;
+      else if (fillCosts.isClose && fillCosts.net <= -PNL_EPSILON) losses++;
     });
 
-    return { totalPnl, totalVolume, totalFees, wins, losses, trades: dayFills.length };
-  }, [dayFills]);
+    return { totalPnl, grossPnl, totalVolume, totalFees, totalFunding, wins, losses, trades: dayFills.length };
+  }, [dayFills, costs]);
+
+  const dayPnlColor = daySummary.totalPnl >= PNL_EPSILON
+    ? "text-profit"
+    : daySummary.totalPnl <= -PNL_EPSILON ? "text-loss" : "text-muted-foreground";
 
   const formattedDate = useMemo(() => parseLocalDateKey(date).toLocaleDateString('en-US', {
     weekday: 'long',
@@ -132,12 +147,12 @@ export function DayTradeBreakdown({ date, fills, onClose }: DayTradeBreakdownPro
             
             <div className="flex items-center gap-4">
               <div className="text-right">
-                <p className="text-xs text-muted-foreground">Day P&L</p>
+                <p className="text-xs text-muted-foreground">Day P&L (net)</p>
                 <p className={cn(
                   "text-xl font-mono font-bold",
-                  daySummary.totalPnl >= 0 ? "text-profit" : "text-loss"
+                  dayPnlColor
                 )}>
-                  {daySummary.totalPnl >= 0 ? '+' : ''}{formatCurrency(daySummary.totalPnl)}
+                  {daySummary.totalPnl >= PNL_EPSILON ? '+' : ''}{formatCurrency(Math.abs(daySummary.totalPnl) < PNL_EPSILON ? 0 : daySummary.totalPnl)}
                 </p>
               </div>
               
@@ -153,25 +168,40 @@ export function DayTradeBreakdown({ date, fills, onClose }: DayTradeBreakdownPro
           </div>
 
           {/* Quick Stats */}
-          <div className="flex gap-6 mt-3 text-sm">
+          <div className="flex flex-wrap gap-x-6 gap-y-1 mt-3 text-sm">
             <div>
               <span className="text-muted-foreground">Volume: </span>
               <span className="font-mono">{formatCurrency(daySummary.totalVolume)}</span>
             </div>
             <div>
-              <span className="text-muted-foreground">Fees: </span>
-              <span className="font-mono text-loss">{formatCurrency(daySummary.totalFees)}</span>
+              <span className="text-muted-foreground">Gross: </span>
+              <span className="font-mono">{formatCurrency(daySummary.grossPnl)}</span>
             </div>
+            <div>
+              <span className="text-muted-foreground">Fees: </span>
+              <span className="font-mono text-loss">{formatCurrency(-daySummary.totalFees)}</span>
+            </div>
+            {Math.abs(daySummary.totalFunding) >= PNL_EPSILON && (
+              <div>
+                <span className="text-muted-foreground">Funding: </span>
+                <span className={cn("font-mono", daySummary.totalFunding > 0 ? "text-profit" : "text-loss")}>
+                  {formatCurrency(daySummary.totalFunding)}
+                </span>
+              </div>
+            )}
             <div>
               <span className="text-muted-foreground">Win Rate: </span>
               <span className={cn(
                 "font-mono",
                 daySummary.wins >= daySummary.losses ? "text-profit" : "text-loss"
               )}>
-                {daySummary.trades > 0 ? ((daySummary.wins / daySummary.trades) * 100).toFixed(0) : 0}%
+                {daySummary.wins + daySummary.losses > 0 ? ((daySummary.wins / (daySummary.wins + daySummary.losses)) * 100).toFixed(0) : 0}%
               </span>
             </div>
           </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            P&L is net: a position's opening fee and the funding paid while it was open count on the day it closes.
+          </p>
         </div>
 
         {/* Trade List */}
@@ -185,12 +215,12 @@ export function DayTradeBreakdown({ date, fills, onClose }: DayTradeBreakdownPro
                 <th className="text-right py-2 px-4 font-medium">Size</th>
                 <th className="text-right py-2 px-4 font-medium">Price</th>
                 <th className="text-right py-2 px-4 font-medium">Fee</th>
-                <th className="text-right py-2 px-4 font-medium">P&L</th>
+                <th className="text-right py-2 px-4 font-medium">Net P&L</th>
               </tr>
             </thead>
             <tbody>
               {displayedFills.map((fill) => (
-                <TradeRow key={fill.tid} fill={fill} />
+                <TradeRow key={fill.tid} fill={fill} fillCosts={getFillCosts(costs, fill)} />
               ))}
             </tbody>
           </table>
