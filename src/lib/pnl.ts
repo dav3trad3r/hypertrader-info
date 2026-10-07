@@ -147,3 +147,198 @@ export function attributeCosts(fills: Fill[], funding: FundingPayment[] = []): C
 
   return { byFill, openFees, openFunding, totalFees, totalFunding };
 }
+
+// --- Round trips: a "trade" is a position from open to flat ---
+
+export interface RoundTrip {
+  coin: string;
+  /** Fill that opened the position, or null when it opened before the loaded history. */
+  openTime: number | null;
+  closeTime: number;
+  /** Realized PnL of every close in the trip, net of all fees and funding booked on them. */
+  net: number;
+  isLong: boolean;
+}
+
+// Spot balances rarely land on exactly zero, so tiny remainders count as flat
+const isFlat = (size: number, reference: number) =>
+  Math.abs(size) <= Math.max(1e-9, Math.abs(reference) * 1e-6);
+
+// Group fills into round trips per coin. A trip runs from the fill that opens a
+// position to the fill that brings it back to flat; partial closes add up inside the
+// trip, and a flip closes one trip and opens the next with the remainder.
+// Counting fills instead would split one exit over several "trades".
+export function buildRoundTrips(fills: Fill[], costs: CostAttribution): RoundTrip[] {
+  const sorted = [...fills].sort((a, b) => a.time - b.time || a.tid - b.tid);
+  const open = new Map<string, { openTime: number | null; net: number; isLong: boolean; hasClose: boolean }>();
+  const trips: RoundTrip[] = [];
+
+  for (const fill of sorted) {
+    const size = Math.abs(parseFloat(fill.sz) || 0);
+    const start = parseFloat(fill.startPosition) || 0;
+    const after = start + (fill.side === 'B' ? size : -size);
+    const fillCosts = getFillCosts(costs, fill);
+
+    let trip = open.get(fill.coin);
+    if (!trip) {
+      trip = start === 0 && !fillCosts.isClose
+        ? { openTime: fill.time, net: 0, isLong: fill.side === 'B', hasClose: false }
+        // Opened before the loaded history (or a stored fill without startPosition)
+        : { openTime: null, net: 0, isLong: start !== 0 ? start > 0 : fill.side === 'A', hasClose: false };
+    }
+
+    if (fillCosts.isClose) {
+      trip.net += fillCosts.net;
+      trip.hasClose = true;
+    }
+
+    const flipped = start !== 0 && !isFlat(after, start) && Math.sign(after) !== Math.sign(start);
+    const closed = trip.hasClose && (isFlat(after, start || size) || flipped || (start === 0 && fillCosts.isClose));
+    if (closed) {
+      trips.push({ coin: fill.coin, openTime: trip.openTime, closeTime: fill.time, net: trip.net, isLong: trip.isLong });
+      open.delete(fill.coin);
+      if (flipped) open.set(fill.coin, { openTime: fill.time, net: 0, isLong: after > 0, hasClose: false });
+    } else {
+      open.set(fill.coin, trip);
+    }
+  }
+
+  return trips;
+}
+
+export interface TradeStats {
+  trades: number;
+  wins: number;
+  losses: number;
+  /** Share of decided trades (wins + losses) that won, 0-100. */
+  winRate: number;
+  avgWin: number;
+  avgLoss: number;
+  /** Average win / average loss; null without both wins and losses. */
+  payoffRatio: number | null;
+  /** Win rate needed to break even at this payoff ratio, 0-100. */
+  breakEvenWinRate: number | null;
+  /** Gross wins / gross losses; null when nothing was lost. */
+  profitFactor: number | null;
+  grossWins: number;
+  grossLosses: number;
+  /** Net result per trade. */
+  expectancy: number;
+  largestWin: number;
+  largestLoss: number;
+  avgHoldWinMs: number | null;
+  avgHoldLossMs: number | null;
+}
+
+const PNL_FLAT = 0.005;
+
+export function computeTradeStats(trips: RoundTrip[]): TradeStats {
+  const winners = trips.filter(t => t.net >= PNL_FLAT);
+  const losers = trips.filter(t => t.net <= -PNL_FLAT);
+  const grossWins = winners.reduce((s, t) => s + t.net, 0);
+  const grossLosses = -losers.reduce((s, t) => s + t.net, 0);
+  const decided = winners.length + losers.length;
+  const avgWin = winners.length ? grossWins / winners.length : 0;
+  const avgLoss = losers.length ? grossLosses / losers.length : 0;
+  const payoffRatio = winners.length && losers.length ? avgWin / avgLoss : null;
+  const avgHold = (list: RoundTrip[]) => {
+    const known = list.filter(t => t.openTime !== null);
+    return known.length ? known.reduce((s, t) => s + (t.closeTime - t.openTime!), 0) / known.length : null;
+  };
+
+  return {
+    trades: trips.length,
+    wins: winners.length,
+    losses: losers.length,
+    winRate: decided ? (winners.length / decided) * 100 : 0,
+    avgWin,
+    avgLoss,
+    payoffRatio,
+    breakEvenWinRate: payoffRatio !== null ? 100 / (1 + payoffRatio) : null,
+    profitFactor: grossLosses > 0 ? grossWins / grossLosses : null,
+    grossWins,
+    grossLosses,
+    expectancy: trips.length ? trips.reduce((s, t) => s + t.net, 0) / trips.length : 0,
+    largestWin: winners.reduce((m, t) => Math.max(m, t.net), 0),
+    largestLoss: losers.reduce((m, t) => Math.min(m, t.net), 0),
+    avgHoldWinMs: avgHold(winners),
+    avgHoldLossMs: avgHold(losers),
+  };
+}
+
+// --- Whole-account, mark-to-market stats from Hyperliquid's portfolio history ---
+
+export interface EquityPoint {
+  time: number;
+  /** Account value, including deposits. */
+  accountValue: number;
+  /** Cumulative PnL (mark-to-market, excludes deposits and withdrawals). */
+  pnl: number;
+}
+
+export interface EquityStats {
+  spanDays: number;
+  /** PnL over the series, open positions marked to market. */
+  pnl: number;
+  /** Largest peak-to-trough fall in cumulative PnL (positive number). */
+  maxDrawdown: number;
+  /** maxDrawdown as a share of the account value at the peak, 0-100. */
+  maxDrawdownPct: number | null;
+  /** Annualised; null until there is enough history to mean anything. */
+  sharpe: number | null;
+  sortino: number | null;
+}
+
+/** Below this much history a Sharpe ratio is mostly noise. */
+export const MIN_SHARPE_DAYS = 90;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+export function computeEquityStats(points: EquityPoint[]): EquityStats | null {
+  if (points.length < 2) return null;
+  const series = [...points].sort((a, b) => a.time - b.time);
+  const spanDays = (series[series.length - 1].time - series[0].time) / DAY_MS;
+
+  let peakPnl = series[0].pnl;
+  let peakValue = series[0].accountValue;
+  let maxDrawdown = 0;
+  let maxDrawdownPct: number | null = null;
+  for (const point of series) {
+    if (point.pnl > peakPnl) {
+      peakPnl = point.pnl;
+      peakValue = point.accountValue;
+    }
+    const drawdown = peakPnl - point.pnl;
+    if (drawdown > maxDrawdown) {
+      maxDrawdown = drawdown;
+      maxDrawdownPct = peakValue > 0 ? (drawdown / peakValue) * 100 : null;
+    }
+  }
+
+  // Period returns: PnL change over the account value at the start of the period
+  const returns: number[] = [];
+  for (let i = 1; i < series.length; i++) {
+    const base = series[i - 1].accountValue;
+    if (base > 0) returns.push((series[i].pnl - series[i - 1].pnl) / base);
+  }
+
+  let sharpe: number | null = null;
+  let sortino: number | null = null;
+  if (spanDays >= MIN_SHARPE_DAYS && returns.length >= 20) {
+    const mean = returns.reduce((s, r) => s + r, 0) / returns.length;
+    const sd = Math.sqrt(returns.reduce((s, r) => s + (r - mean) ** 2, 0) / (returns.length - 1));
+    const downside = Math.sqrt(returns.reduce((s, r) => s + Math.min(r, 0) ** 2, 0) / returns.length);
+    // Samples are irregular, so annualise by the average period length
+    const periodsPerYear = (365 * DAY_MS) / ((series[series.length - 1].time - series[0].time) / (series.length - 1));
+    if (sd > 0) sharpe = (mean / sd) * Math.sqrt(periodsPerYear);
+    if (downside > 0) sortino = (mean / downside) * Math.sqrt(periodsPerYear);
+  }
+
+  return {
+    spanDays,
+    pnl: series[series.length - 1].pnl - series[0].pnl,
+    maxDrawdown,
+    maxDrawdownPct,
+    sharpe,
+    sortino,
+  };
+}

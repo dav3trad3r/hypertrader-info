@@ -1,6 +1,15 @@
 // Hyperliquid API Types and Services
 
-import { attributeCosts, getFillCosts, type CostAttribution, type FundingPayment } from './pnl';
+import {
+  attributeCosts,
+  buildRoundTrips,
+  computeTradeStats,
+  getFillCosts,
+  type CostAttribution,
+  type EquityPoint,
+  type FundingPayment,
+  type TradeStats,
+} from './pnl';
 
 export type MarketType = 'all' | 'perps' | 'spot';
 
@@ -208,6 +217,8 @@ export interface UserTradingData {
   assetPerformance: AssetPerformance[];
   summary: TradingSummary;
   costs: CostAttribution;
+  /** Closed round trips (open to flat), the unit for per-trade stats. */
+  tradeStats: TradeStats;
 }
 
 const HYPERLIQUID_API = "https://api.hyperliquid.xyz/info";
@@ -227,21 +238,63 @@ async function postInfoDirect(payload: object, attempts = 4): Promise<Response> 
   }
 }
 
-// Total account value as Hyperliquid computes it: perps on every dex plus spot, and the
-// right total for unified accounts (where perp margin is a hold on spot USDC, so adding
-// the per-dex perp values to spot would double count, and perps alone miss free USDC).
-export async function fetchAccountValue(address: string): Promise<number | null> {
+export interface Portfolio {
+  /** Total account value as Hyperliquid computes it: perps on every dex plus spot, and the
+   *  right total for unified accounts (where perp margin is a hold on spot USDC, so adding
+   *  the per-dex perp values to spot would double count, and perps alone miss free USDC). */
+  accountValue: number | null;
+  /** All-time account value and mark-to-market PnL history. */
+  equity: EquityPoint[];
+}
+
+export async function fetchPortfolio(address: string): Promise<Portfolio | null> {
   try {
     const response = await makeApiRequest({ type: "portfolio", user: address });
     if (!response.ok) return null;
-    const portfolio: Array<[string, { accountValueHistory?: Array<[number, string]> }]> = await response.json();
-    const periods = new Map(portfolio);
-    const history = periods.get("day")?.accountValueHistory ?? periods.get("allTime")?.accountValueHistory;
-    if (!history?.length) return null;
-    const value = parseFloat(history[history.length - 1][1]);
-    return Number.isFinite(value) ? value : null;
+    type Period = { accountValueHistory?: Array<[number, string]>; pnlHistory?: Array<[number, string]> };
+    const periods = new Map<string, Period>(await response.json());
+
+    const latest = periods.get("day")?.accountValueHistory ?? periods.get("allTime")?.accountValueHistory;
+    const value = latest?.length ? parseFloat(latest[latest.length - 1][1]) : NaN;
+
+    const allTime = periods.get("allTime");
+    const pnlByTime = new Map((allTime?.pnlHistory ?? []).map(([time, pnl]) => [time, parseFloat(pnl)]));
+    const equity = (allTime?.accountValueHistory ?? [])
+      .filter(([time]) => pnlByTime.has(time))
+      .map(([time, accountValue]) => ({ time, accountValue: parseFloat(accountValue), pnl: pnlByTime.get(time)! }));
+
+    return { accountValue: Number.isFinite(value) ? value : null, equity };
   } catch (error) {
-    console.error('Error fetching account value:', error);
+    console.error('Error fetching portfolio:', error);
+    return null;
+  }
+}
+
+export interface OpenExposure {
+  long: number;
+  short: number;
+}
+
+// Notional of open perp positions across every dex (long and short separately)
+export async function fetchOpenExposure(address: string): Promise<OpenExposure | null> {
+  try {
+    const dexes = await getPerpDexNames();
+    const states = await Promise.all(dexes.map(async dex => {
+      const response = await postInfoDirect(dex ? { type: "clearinghouseState", user: address, dex } : { type: "clearinghouseState", user: address });
+      return response.ok ? response.json() : null;
+    }));
+    const exposure: OpenExposure = { long: 0, short: 0 };
+    for (const state of states) {
+      for (const { position } of state?.assetPositions ?? []) {
+        const size = parseFloat(position.szi) || 0;
+        const notional = Math.abs(parseFloat(position.positionValue) || 0);
+        if (size > 0) exposure.long += notional;
+        else if (size < 0) exposure.short += notional;
+      }
+    }
+    return exposure;
+  } catch (error) {
+    console.error('Error fetching open exposure:', error);
     return null;
   }
 }
@@ -781,7 +834,6 @@ export function processAssetPerformance(
   const assetMap = new Map<string, {
     pnl: number;
     trades: number;
-    closes: number;
     volume: number;
     wins: number;
     losses: number;
@@ -795,19 +847,21 @@ export function processAssetPerformance(
     const volume = parseFloat(fill.sz) * parseFloat(fill.px);
 
     if (!assetMap.has(coin)) {
-      assetMap.set(coin, { pnl: 0, trades: 0, closes: 0, volume: 0, wins: 0, losses: 0 });
+      assetMap.set(coin, { pnl: 0, trades: 0, volume: 0, wins: 0, losses: 0 });
     }
 
     const asset = assetMap.get(coin)!;
     asset.pnl += fillCosts.net;
-    asset.trades += 1;
     asset.volume += volume;
+  });
 
-    if (fillCosts.isClose) {
-      asset.closes += 1;
-      if (fillCosts.net >= PNL_EPSILON) asset.wins += 1;
-      else if (fillCosts.net <= -PNL_EPSILON) asset.losses += 1;
-    }
+  // Trades and win rate count round trips (open to flat), not fills
+  buildRoundTrips(fills, costs).forEach(trip => {
+    const asset = assetMap.get(getSpotTokenName(trip.coin, cache));
+    if (!asset) return;
+    asset.trades += 1;
+    if (trip.net >= PNL_EPSILON) asset.wins += 1;
+    else if (trip.net <= -PNL_EPSILON) asset.losses += 1;
   });
   
   return Array.from(assetMap.entries())
@@ -817,7 +871,7 @@ export function processAssetPerformance(
       trades: data.trades,
       volume: data.volume,
       winRate: data.wins + data.losses > 0 ? (data.wins / (data.wins + data.losses)) * 100 : 0,
-      avgPnl: data.closes > 0 ? data.pnl / data.closes : 0,
+      avgPnl: data.trades > 0 ? data.pnl / data.trades : 0,
     }))
     .sort((a, b) => b.pnl - a.pnl);
 }
@@ -827,6 +881,7 @@ export function calculateSummary(
   fills: Fill[],
   dailyPnL: DailyPnL[],
   costs: CostAttribution = attributeCosts(fills),
+  tradeStats: TradeStats = computeTradeStats(buildRoundTrips(fills, costs)),
 ): TradingSummary {
   const totalPnl = dailyPnL.reduce((sum, d) => sum + d.pnl, 0);
   const grossPnl = dailyPnL.reduce((sum, d) => sum + d.grossPnl, 0);
@@ -842,15 +897,8 @@ export function calculateSummary(
   const bestDay = sortedByPnl[0] || null;
   const worstDay = sortedByPnl[sortedByPnl.length - 1] || null;
 
-  // Find largest single closing trade win/loss (net of its costs)
-  let largestWin = 0;
-  let largestLoss = 0;
-  fills.forEach(fill => {
-    const { net, isClose } = getFillCosts(costs, fill);
-    if (!isClose) return;
-    if (net > largestWin) largestWin = net;
-    if (net < largestLoss) largestLoss = net;
-  });
+  // Largest win/loss per round trip (an exit split over several fills is one trade)
+  const { largestWin, largestLoss } = tradeStats;
 
   return {
     totalPnl,
@@ -878,10 +926,11 @@ export async function fetchTradingData(address: string): Promise<UserTradingData
     getSpotTokenCache(),
   ]);
   const costs = attributeCosts(fills);
+  const tradeStats = computeTradeStats(buildRoundTrips(fills, costs));
   const dailyPnL = processDailyPnL(fills, costs);
   const weeklyPnL = processWeeklyPnL(dailyPnL);
   const assetPerformance = processAssetPerformance(fills, spotCache, costs);
-  const summary = calculateSummary(fills, dailyPnL, costs);
+  const summary = calculateSummary(fills, dailyPnL, costs, tradeStats);
 
   return {
     fills,
@@ -890,6 +939,7 @@ export async function fetchTradingData(address: string): Promise<UserTradingData
     assetPerformance,
     summary,
     costs,
+    tradeStats,
   };
 }
 

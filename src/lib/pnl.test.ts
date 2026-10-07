@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { attributeCosts, feeInUsd, type FundingPayment } from './pnl';
+import { attributeCosts, buildRoundTrips, computeEquityStats, computeTradeStats, feeInUsd, type FundingPayment } from './pnl';
 import { processDailyPnL, calculateSummary, formatLocalDateKey, type Fill } from './hyperliquid';
 
 let nextTid = 1;
@@ -147,5 +147,120 @@ describe('daily PnL and summary', () => {
     expect(summary.losingDays).toBe(0);
     expect(summary.winRate).toBe(100);
     expect(summary.avgDailyPnl).toBeCloseTo(8);
+  });
+});
+
+describe('round trips', () => {
+  it('counts an exit split over several fills as one trade', () => {
+    const fills = [
+      fill({ time: T0, sz: '3', fee: '0' }),
+      fill({ time: T0 + 1000, side: 'A', dir: 'Close Long', startPosition: '3', sz: '1', closedPnl: '481' }),
+      fill({ time: T0 + 2000, side: 'A', dir: 'Close Long', startPosition: '2', sz: '1', closedPnl: '27' }),
+      fill({ time: T0 + 3000, side: 'A', dir: 'Close Long', startPosition: '1', sz: '1', closedPnl: '206' }),
+    ];
+    const trips = buildRoundTrips(fills, attributeCosts(fills));
+
+    expect(trips).toHaveLength(1);
+    expect(trips[0].net).toBeCloseTo(714);
+    expect(trips[0].openTime).toBe(T0);
+    expect(trips[0].closeTime).toBe(T0 + 3000);
+  });
+
+  it('closes one trade and opens the next on a flip', () => {
+    const fills = [
+      fill({ time: T0, sz: '2' }),
+      fill({ time: T0 + 1000, side: 'A', dir: 'Long > Short', startPosition: '2', sz: '5', closedPnl: '10' }),
+      fill({ time: T0 + 2000, side: 'B', dir: 'Close Short', startPosition: '-3', sz: '3', closedPnl: '-4' }),
+    ];
+    const trips = buildRoundTrips(fills, attributeCosts(fills));
+
+    expect(trips.map(t => [t.isLong, Math.round(t.net), t.openTime])).toEqual([
+      [true, 10, T0],
+      [false, -4, T0 + 1000],
+    ]);
+  });
+
+  it('keeps an unfinished position out of the trades', () => {
+    const fills = [
+      fill({ time: T0, sz: '4' }),
+      fill({ time: T0 + 1000, side: 'A', dir: 'Close Long', startPosition: '4', sz: '1', closedPnl: '5' }),
+    ];
+    expect(buildRoundTrips(fills, attributeCosts(fills))).toHaveLength(0);
+  });
+
+  it('handles a position opened before the loaded history', () => {
+    const fills = [fill({ time: T0, coin: 'ETH', side: 'B', dir: 'Close Short', startPosition: '-2', sz: '2', closedPnl: '-7' })];
+    const [trip] = buildRoundTrips(fills, attributeCosts(fills));
+
+    expect(trip).toMatchObject({ coin: 'ETH', openTime: null, isLong: false });
+    expect(trip.net).toBeCloseTo(-7);
+  });
+
+  it('treats a spot balance left with dust as flat', () => {
+    const fills = [
+      fill({ time: T0, coin: '@166', dir: 'Buy', sz: '90139.52' }),
+      fill({ time: T0 + 1000, coin: '@166', side: 'A', dir: 'Sell', startPosition: '90139.52', sz: '90139.5199999', closedPnl: '12' }),
+    ];
+    expect(buildRoundTrips(fills, attributeCosts(fills))).toHaveLength(1);
+  });
+});
+
+describe('trade stats', () => {
+  const trip = (net: number, holdMs: number | null = DAY) =>
+    ({ coin: 'BTC', openTime: holdMs === null ? null : T0, closeTime: T0 + (holdMs ?? 0), net, isLong: true });
+
+  it('computes profit factor, payoff ratio and break-even win rate per trade', () => {
+    const stats = computeTradeStats([trip(300), trip(100), trip(-50, 2 * DAY), trip(-150, 2 * DAY), trip(0)]);
+
+    expect(stats.trades).toBe(5);
+    expect(stats.winRate).toBe(50); // the flat trade is neither
+    expect(stats.avgWin).toBe(200);
+    expect(stats.avgLoss).toBe(100);
+    expect(stats.payoffRatio).toBe(2);
+    expect(stats.breakEvenWinRate).toBeCloseTo(33.33, 2);
+    expect(stats.profitFactor).toBe(2);
+    expect(stats.expectancy).toBe(40);
+    expect(stats.largestWin).toBe(300);
+    expect(stats.largestLoss).toBe(-150);
+    expect(stats.avgHoldWinMs).toBe(DAY);
+    expect(stats.avgHoldLossMs).toBe(2 * DAY);
+  });
+
+  it('has no profit factor or payoff ratio without losses', () => {
+    const stats = computeTradeStats([trip(10), trip(20, null)]);
+    expect(stats.profitFactor).toBeNull();
+    expect(stats.payoffRatio).toBeNull();
+    expect(stats.avgHoldWinMs).toBe(DAY); // the trip with an unknown open is left out
+  });
+});
+
+describe('equity stats', () => {
+  const series = (days: number, step: (i: number) => number) => {
+    let pnl = 0;
+    return Array.from({ length: days + 1 }, (_, i) => {
+      if (i > 0) pnl += step(i);
+      return { time: T0 + i * DAY, accountValue: 10000 + pnl, pnl };
+    });
+  };
+
+  it('measures the largest peak-to-trough fall', () => {
+    const stats = computeEquityStats([
+      { time: T0, accountValue: 10000, pnl: 0 },
+      { time: T0 + DAY, accountValue: 11000, pnl: 1000 },
+      { time: T0 + 2 * DAY, accountValue: 10400, pnl: 400 },
+      { time: T0 + 3 * DAY, accountValue: 11500, pnl: 1500 },
+    ])!;
+    expect(stats.maxDrawdown).toBe(600);
+    expect(stats.maxDrawdownPct).toBeCloseTo((600 / 11000) * 100);
+    expect(stats.pnl).toBe(1500);
+  });
+
+  it('withholds Sharpe until there are 90 days of history', () => {
+    const short = computeEquityStats(series(30, i => (i % 3 === 0 ? -40 : 60)))!;
+    expect(short.sharpe).toBeNull();
+
+    const long = computeEquityStats(series(120, i => (i % 3 === 0 ? -40 : 60)))!;
+    expect(long.sharpe).toBeGreaterThan(0);
+    expect(long.sortino!).toBeGreaterThan(long.sharpe!);
   });
 });

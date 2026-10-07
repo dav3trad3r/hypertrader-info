@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useHyperliquidData } from '@/hooks/useHyperliquidData';
 import { Header } from '@/components/Header';
 import { OpenSourceLinks } from '@/components/OpenSourceLinks';
+import { TraderScorecard } from '@/components/TraderScorecard';
 import { AddressSearch } from '@/components/AddressSearch';
 import { PnLCalendar } from '@/components/PnLCalendar';
 import { SummaryStats } from '@/components/SummaryStats';
@@ -52,8 +53,9 @@ function RefreshIndicator({ isRefreshing, lastRefreshed }: { isRefreshing: boole
 
 const Index = () => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const { 
-    filteredData, 
+  const {
+    filteredData,
+    equity,
     rawFills,
     isLoading,
     isLoadingMonth,
@@ -275,6 +277,14 @@ const Index = () => {
                     <SummaryStats summary={displayData.summary} />
                   </div>
                 </div>
+
+                <TraderScorecard
+                  tradeStats={displayData.tradeStats}
+                  summary={displayData.summary}
+                  equity={equity}
+                  address={address || ''}
+                  marketType={marketType}
+                />
 
                 {/* Live Positions - Full width below calendar */}
                 <LiveTrades 

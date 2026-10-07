@@ -3,7 +3,7 @@ import {
   fetchAllAvailableFills,
   fetchFillsForMonth, 
   fetchFillsSince,
-  fetchAccountValue,
+  fetchPortfolio,
 fetchUserFunding,
   isValidAddress,
   filterFillsByMarket,
@@ -17,7 +17,7 @@ fetchUserFunding,
   type MarketType,
   type Fill,
 } from '@/lib/hyperliquid';
-import { attributeCosts, type FundingPayment } from '@/lib/pnl';
+import { attributeCosts, buildRoundTrips, computeTradeStats, type EquityPoint, type FundingPayment } from '@/lib/pnl';
 import { resolveInput, isENSName } from '@/lib/ens';
 import { toast } from '@/hooks/use-toast';
 
@@ -36,6 +36,8 @@ interface TrackingInfo {
 
 export interface UseHyperliquidDataReturn {
   data: UserTradingData | null;
+  /** Whole-account, mark-to-market history from Hyperliquid's portfolio. */
+  equity: EquityPoint[];
   filteredData: UserTradingData | null;
   rawFills: Fill[];
   isLoading: boolean;
@@ -81,6 +83,7 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
   const [spotTokenCache, setSpotTokenCache] = useState<Map<number, string>>(new Map());
   const [accountValue, setAccountValue] = useState<number | null>(null);
   const [funding, setFunding] = useState<FundingPayment[]>([]);
+  const [equity, setEquity] = useState<EquityPoint[]>([]);
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -118,10 +121,11 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
     
     // Spot has no funding; perps and "all" book it against the positions it was paid on
     const costs = attributeCosts(filteredFills, marketType === 'spot' ? [] : funding);
+    const tradeStats = computeTradeStats(buildRoundTrips(filteredFills, costs));
     const dailyPnL = processDailyPnL(filteredFills, costs);
     const weeklyPnL = processWeeklyPnL(dailyPnL);
     const assetPerformance = processAssetPerformance(filteredFills, spotTokenCache, costs);
-    const summary = calculateSummary(filteredFills, dailyPnL, costs);
+    const summary = calculateSummary(filteredFills, dailyPnL, costs, tradeStats);
     
     // Add account value to summary if available
     if (accountValue !== null) {
@@ -135,6 +139,7 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
       assetPerformance,
       summary,
       costs,
+      tradeStats,
     };
   }, [rawFills, marketType, spotTokenCache, accountValue, funding]);
 
@@ -143,10 +148,11 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
     if (rawFills.length === 0) return null;
     
     const costs = attributeCosts(rawFills, funding);
+    const tradeStats = computeTradeStats(buildRoundTrips(rawFills, costs));
     const dailyPnL = processDailyPnL(rawFills, costs);
     const weeklyPnL = processWeeklyPnL(dailyPnL);
     const assetPerformance = processAssetPerformance(rawFills, spotTokenCache, costs);
-    const summary = calculateSummary(rawFills, dailyPnL, costs);
+    const summary = calculateSummary(rawFills, dailyPnL, costs, tradeStats);
 
     return {
       fills: rawFills,
@@ -155,6 +161,7 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
       assetPerformance,
       summary,
       costs,
+      tradeStats,
     };
   }, [rawFills, spotTokenCache, funding]);
 
@@ -263,6 +270,7 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
     setTrackingInfo(null);
     setAccountValue(null);
     setFunding([]);
+    setEquity([]);
     fundingCoverageRef.current = null;
 
     try {
@@ -322,15 +330,16 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
       });
       
       // Step 2: Simultaneously fetch from Hyperliquid API for immediate display
-      // Also fetch the account's total value for the balance card
-      const [apiResult, totalValue] = await Promise.all([
+      // Also fetch the portfolio: total account value + mark-to-market history
+      const [apiResult, portfolio] = await Promise.all([
         fetchAllAvailableFills(resolvedAddress),
-        fetchAccountValue(resolvedAddress)
+        fetchPortfolio(resolvedAddress)
       ]);
 
-      if (totalValue !== null) {
-        setAccountValue(totalValue);
+      if (portfolio?.accountValue != null) {
+        setAccountValue(portfolio.accountValue);
       }
+      setEquity(portfolio?.equity ?? []);
       
       if (apiResult.fills.length === 0) {
         // Check if we have historical data in Supabase
@@ -477,6 +486,7 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
     setTrackingInfo(null);
     setAccountValue(null);
     setFunding([]);
+    setEquity([]);
     fundingCoverageRef.current = null;
     lastFillTimeRef.current = 0;
   }, []);
@@ -527,10 +537,13 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
         }).catch(() => {});
       }
 
-      // Also refresh account value
-      const totalValue = await fetchAccountValue(address);
-      if (totalValue !== null) {
-        setAccountValue(totalValue);
+      // Also refresh account value and mark-to-market history
+      const portfolio = await fetchPortfolio(address);
+      if (portfolio?.accountValue != null) {
+        setAccountValue(portfolio.accountValue);
+      }
+      if (portfolio?.equity.length) {
+        setEquity(portfolio.equity);
       }
       
       setLastRefreshed(new Date());
@@ -565,6 +578,7 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
 
   return {
     data,
+    equity,
     filteredData,
     rawFills,
     isLoading,

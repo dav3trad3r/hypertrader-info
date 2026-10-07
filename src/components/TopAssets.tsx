@@ -84,13 +84,17 @@ export function TopAssets({ assets, limit = 10 }: TopAssetsProps) {
                   
                   {/* Meta Info */}
                   <div className="flex items-center gap-4 mt-1.5 text-xs text-muted-foreground">
-                    <span>{asset.trades} trades</span>
+                    <span>{asset.trades} {asset.trades === 1 ? 'trade' : 'trades'}</span>
                     <span>Vol: {formatVolume(asset.volume)}</span>
-                    <span className={cn(
-                      asset.winRate >= 50 ? "text-profit" : "text-loss"
-                    )}>
-                      {asset.winRate.toFixed(0)}% win rate
-                    </span>
+                    {asset.trades > 0 ? (
+                      <span className={cn(
+                        asset.winRate >= 50 ? "text-profit" : "text-loss"
+                      )}>
+                        {asset.winRate.toFixed(0)}% win rate
+                      </span>
+                    ) : (
+                      <span>still open</span>
+                    )}
                   </div>
                 </div>
               </div>
