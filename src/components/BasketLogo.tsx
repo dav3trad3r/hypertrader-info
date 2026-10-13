@@ -39,15 +39,26 @@ function Chip({ coin, size, style }: { coin: string; size: number; style?: React
   );
 }
 
+/** Width of a full stack (`max` chips plus the "+N" chip) at a given size, so a
+ *  list can reserve one column for every row and keep the names on one x. */
+export function basketLogoWidth(size: number, max = 3): number {
+  const chip = Math.round(size * 0.78);
+  const overlap = Math.round(chip * 0.34);
+  return chip + max * (chip - overlap);
+}
+
 interface BasketLogoProps {
   /** Coins, heaviest first ("xyz:NVDA"). */
   symbols: string[];
   size?: number;
   max?: number;
+  /** Always occupy the width of a full stack. In a list a two-chip basket and a
+   *  four-chip basket would otherwise start their names at different x. */
+  reserve?: boolean;
   className?: string;
 }
 
-export function BasketLogo({ symbols, size = 28, max = 3, className }: BasketLogoProps) {
+export function BasketLogo({ symbols, size = 28, max = 3, reserve = false, className }: BasketLogoProps) {
   const shown = symbols.slice(0, max);
   const extra = symbols.length - shown.length;
   const chip = Math.round(size * 0.78);
@@ -55,7 +66,7 @@ export function BasketLogo({ symbols, size = 28, max = 3, className }: BasketLog
   return (
     <span
       className={cn('inline-flex shrink-0 items-center', className)}
-      style={{ height: size }}
+      style={{ height: size, width: reserve ? basketLogoWidth(size, max) : undefined }}
       aria-label={symbols.map(coinSymbol).join(', ')}
       title={symbols.map(coinSymbol).join(' · ')}
     >

@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Layers, ChevronDown, ChevronRight, ExternalLink } from 'lucide-react';
+import { ChevronDown, ChevronRight, ExternalLink } from 'lucide-react';
+import bsktsMark from '@/assets/bskts.svg';
 import { cn, formatCurrency, formatSize } from '@/lib/utils';
 import {
   BSKTS_SITE,
@@ -65,7 +66,7 @@ function BasketRow({ pos, marks, expanded, onToggle }: {
       >
         <div className="flex items-center gap-2 min-w-0">
           {expanded ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" />}
-          <BasketLogo symbols={basketSymbols(pos)} size={26} />
+          <BasketLogo symbols={basketSymbols(pos)} size={26} reserve />
           <div className="min-w-0">
             <div className="font-semibold text-foreground truncate">{pos.ticker}</div>
             <div className="text-[11px] text-muted-foreground">
@@ -167,9 +168,7 @@ export function BasketPositions({ positions, marks, isLive }: BasketPositionsPro
     <div className="bg-card border border-border rounded-lg p-4">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <div className="p-1.5 rounded-md bg-primary/10">
-            <Layers className="w-4 h-4 text-primary" />
-          </div>
+          <img src={bsktsMark} alt="bskts" width={28} height={28} className="w-7 h-7 rounded-md" />
           <h3 className="font-semibold text-foreground">Basket Positions</h3>
           <a
             href={`${BSKTS_SITE}/perps`}

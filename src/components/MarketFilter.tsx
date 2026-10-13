@@ -1,5 +1,6 @@
 import { type MarketType } from '@/lib/hyperliquid';
 import { cn } from '@/lib/utils';
+import bsktsMark from '@/assets/bskts.svg';
 
 interface MarketFilterProps {
   value: MarketType;
@@ -13,11 +14,11 @@ interface MarketFilterProps {
   };
 }
 
-const FILTERS: { value: MarketType; label: string; title?: string }[] = [
+const FILTERS: { value: MarketType; label: string; title?: string; icon?: string }[] = [
   { value: 'all', label: 'All' },
   { value: 'perps', label: 'Perps' },
   { value: 'spot', label: 'Spot' },
-  { value: 'bskts', label: 'bskts', title: 'Perp orders placed through bskts.xyz index baskets' },
+  { value: 'bskts', label: 'bskts', title: 'Perp orders placed through bskts.xyz index baskets', icon: bsktsMark },
 ];
 
 export function MarketFilter({ value, onChange, counts }: MarketFilterProps) {
@@ -30,12 +31,15 @@ export function MarketFilter({ value, onChange, counts }: MarketFilterProps) {
           onClick={() => onChange(filter.value)}
           title={filter.title}
           className={cn(
-            "px-4 py-2 text-sm font-medium rounded-md transition-all duration-200",
+            "inline-flex items-center px-4 py-2 text-sm font-medium rounded-md transition-all duration-200",
             value === filter.value
               ? "bg-primary text-primary-foreground shadow-sm"
               : "text-muted-foreground hover:text-foreground hover:bg-muted"
           )}
         >
+          {filter.icon && (
+            <img src={filter.icon} alt="" width={16} height={16} className="w-4 h-4 rounded-[3px] mr-1.5" />
+          )}
           {filter.label}
           <span className={cn(
             "ml-2 text-xs font-mono",

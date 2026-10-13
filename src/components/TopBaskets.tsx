@@ -59,7 +59,7 @@ export function TopBaskets({ positions, marks, limit = 10 }: TopBasketsProps) {
           return (
             <div key={r.ticker} className="flex items-center gap-3">
               <span className="text-xs text-muted-foreground w-5 text-right font-mono">{index + 1}</span>
-              <BasketLogo symbols={r.symbols} size={30} />
+              <BasketLogo symbols={r.symbols} size={30} reserve />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between">
                   <span className="font-medium text-sm text-foreground truncate">
