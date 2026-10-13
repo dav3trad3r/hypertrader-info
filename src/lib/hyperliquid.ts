@@ -11,7 +11,19 @@ import {
   type TradeStats,
 } from './pnl';
 
-export type MarketType = 'all' | 'perps' | 'spot';
+import { isBsktsFill } from './bskts';
+
+/** 'bskts' = perp fills placed through bskts.xyz (identified by their client order id). */
+export type MarketType = 'all' | 'perps' | 'spot' | 'bskts';
+
+export function marketLabel(marketType: MarketType, allLabel = 'All Markets'): string {
+  switch (marketType) {
+    case 'perps': return 'Perps';
+    case 'spot': return 'Spot';
+    case 'bskts': return 'bskts';
+    default: return allLabel;
+  }
+}
 
 export interface Fill {
   closedPnl: string;
@@ -28,6 +40,8 @@ export interface Fill {
   fee: string;
   feeToken: string;
   builderFee?: string;
+  /** Client order id, when the order set one. bskts encodes the basket in it. */
+  cloid?: string | null;
   tid: number;
 }
 
@@ -132,6 +146,7 @@ export function isSpotTrade(fill: Fill): boolean {
 export function filterFillsByMarket(fills: Fill[], marketType: MarketType): Fill[] {
   if (marketType === 'all') return fills;
   if (marketType === 'spot') return fills.filter(f => isSpotTrade(f));
+  if (marketType === 'bskts') return fills.filter(f => isBsktsFill(f));
   return fills.filter(f => !isSpotTrade(f)); // perps
 }
 

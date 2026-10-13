@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useHyperliquidData } from '@/hooks/useHyperliquidData';
 import { Header } from '@/components/Header';
@@ -17,9 +17,7 @@ import { SharePnLCard } from '@/components/SharePnLCard';
 import { LiveTrades } from '@/components/LiveTrades';
 import { ShareProfileButton } from '@/components/ShareProfileButton';
 import { TradingRulesBanner } from '@/components/TradingRulesBanner';
-import { BsktsPositions } from '@/components/BsktsPositions';
-import { useBsktsAccount } from '@/hooks/useBsktsAccount';
-import { hasBsktsActivity } from '@/lib/bskts';
+import { bsktsCoins } from '@/lib/bskts';
 
 // Address that shows the trading rules banner
 const RULES_ADDRESS = '0xF5dbd88878Ea8ED3992c883871a77bb146E6b619'.toLowerCase();
@@ -81,11 +79,8 @@ const Index = () => {
     refreshNow,
   } = useHyperliquidData();
 
-  // Same EVM address on Robinhood Chain: bskts baskets, if any.
-  const bskts = useBsktsAccount(address);
-  const hasBskts = hasBsktsActivity(bskts.account);
-  // A bskts-only wallet has no Hyperliquid fills; don't call that an error.
-  const isNoHistoryError = !!error && /no trading history/i.test(error);
+  // Perp coins traded through bskts.xyz on this account (scopes Live Positions under the bskts filter)
+  const bsktsCoinSet = useMemo(() => bsktsCoins(rawFills), [rawFills]);
 
   // Auto-fetch if address is in URL params
   useEffect(() => {
@@ -125,21 +120,11 @@ const Index = () => {
         {isLoading && <LoadingSpinner />}
 
         {/* Error State */}
-        {error && !isLoading && !(isNoHistoryError && hasBskts) && (
+        {error && !isLoading && (
           <ErrorDisplay
             message={error}
             onRetry={() => address && fetchData(address)}
           />
-        )}
-
-        {/* bskts-only wallets: baskets on Robinhood Chain with no Hyperliquid history. */}
-        {address && !rawFills.length && !isLoading && hasBskts && (
-          <div className="space-y-4 mb-6 animate-fade-in">
-            <BsktsPositions account={bskts.account} isLive={bskts.isLive} />
-            <p className="text-center text-sm text-muted-foreground">
-              No Hyperliquid trading history for this address yet. Showing bskts holdings only.
-            </p>
-          </div>
         )}
 
         {/* Empty State */}
@@ -269,7 +254,7 @@ const Index = () => {
             {!displayData && (
               <div className="bg-card border border-border rounded-lg p-8 text-center">
                 <p className="text-muted-foreground">
-                  No {marketType === 'perps' ? 'perpetual' : 'spot'} trades found for this address.
+                  No {marketType === 'perps' ? 'perpetual' : marketType === 'bskts' ? 'bskts' : 'spot'} trades found for this address.
                 </p>
               </div>
             )}
@@ -305,13 +290,11 @@ const Index = () => {
                   marketType={marketType}
                 />
 
-                {/* bskts baskets on Robinhood Chain (same EVM address); renders nothing for HL-only addresses */}
-                <BsktsPositions account={bskts.account} isLive={bskts.isLive} />
-
                 {/* Live Positions - Full width below calendar */}
-                <LiveTrades 
+                <LiveTrades
                   address={address || ''}
                   marketType={marketType}
+                  bsktsCoins={bsktsCoinSet}
                 />
 
                 {/* Bottom Section */}

@@ -1,6 +1,6 @@
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { fetchTradingData, filterFillsByMarket, processDailyPnL, calculateSummary, type MarketType, type DailyPnL, type TradingSummary } from '@/lib/hyperliquid';
+import { fetchTradingData, filterFillsByMarket, processDailyPnL, calculateSummary, marketLabel, type MarketType, type DailyPnL, type TradingSummary } from '@/lib/hyperliquid';
 import { cn, formatCurrency } from '@/lib/utils';
 import { TrendingUp, TrendingDown, Trophy, Target, Calendar } from 'lucide-react';
 import { useMemo } from 'react';
@@ -63,7 +63,7 @@ function ShareCard({ summary, dailyPnL, address, marketType }: ShareCardProps) {
           </div>
         </div>
         <div className="text-lg px-4 py-2 rounded-full bg-primary/20 text-primary font-medium">
-          {marketType === 'all' ? 'All Markets' : marketType === 'perps' ? 'Perps' : 'Spot'}
+          {marketLabel(marketType)}
         </div>
       </div>
 

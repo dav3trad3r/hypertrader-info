@@ -12,6 +12,9 @@ fetchUserFunding,
   processAssetPerformance,
   calculateSummary,
   isSpotTrade,
+} from '@/lib/hyperliquid';
+import { isBsktsFill } from '@/lib/bskts';
+import {
   getSpotTokenCache,
   type UserTradingData,
   type MarketType,
@@ -54,7 +57,7 @@ export interface UseHyperliquidDataReturn {
   ensName: string | null;
   marketType: MarketType;
   setMarketType: (type: MarketType) => void;
-  marketCounts: { all: number; perps: number; spot: number };
+  marketCounts: { all: number; perps: number; spot: number; bskts: number };
   fetchData: (addressOrENS: string) => Promise<void>;
   loadMonth: (year: number, month: number) => Promise<void>;
   clearData: () => void;
@@ -105,10 +108,12 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
   const marketCounts = useMemo(() => {
     const perps = rawFills.filter(f => !isSpotTrade(f)).length;
     const spot = rawFills.filter(f => isSpotTrade(f)).length;
+    const bskts = rawFills.filter(f => isBsktsFill(f)).length;
     return {
       all: rawFills.length,
       perps,
       spot,
+      bskts,
     };
   }, [rawFills]);
 

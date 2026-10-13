@@ -1,13 +1,17 @@
 import { useState, useEffect, memo } from 'react';
 import { Activity, ArrowUpRight, ArrowDownRight, Zap, Clock, TrendingUp, TrendingDown, AlertTriangle } from 'lucide-react';
 import { cn, formatCurrency, formatSize } from '@/lib/utils';
-import { getPerpDexNames } from '@/lib/hyperliquid';
+import { getPerpDexNames, type MarketType } from '@/lib/hyperliquid';
 import { Progress } from '@/components/ui/progress';
 import { CoinIcon } from '@/components/CoinIcon';
 
 interface LiveTradesProps {
   address: string;
-  marketType: 'all' | 'perps' | 'spot';
+  marketType: MarketType;
+  /** Coins bskts orders have traded on this account. Hyperliquid nets positions
+   *  per asset, so under the bskts filter we show the perp positions in those
+   *  coins; a position bskts shares with the user's own trading is shown whole. */
+  bsktsCoins?: Set<string>;
 }
 
 interface PerpPosition {
@@ -479,7 +483,7 @@ const TwapOrderItem = memo(function TwapOrderItem({
   );
 });
 
-export function LiveTrades({ address, marketType }: LiveTradesProps) {
+export function LiveTrades({ address, marketType, bsktsCoins }: LiveTradesProps) {
   const [perpPositions, setPerpPositions] = useState<PerpPosition[]>([]);
   const [spotPositions, setSpotPositions] = useState<SpotPosition[]>([]);
   const [twapOrders, setTwapOrders] = useState<TwapOrder[]>([]);
@@ -715,6 +719,7 @@ export function LiveTrades({ address, marketType }: LiveTradesProps) {
   const filteredPositions: Position[] = (() => {
     if (marketType === 'perps') return perpPositions;
     if (marketType === 'spot') return spotPositions;
+    if (marketType === 'bskts') return perpPositions.filter(p => bsktsCoins?.has(p.coin));
     return [...perpPositions, ...spotPositions];
   })();
 
@@ -722,6 +727,7 @@ export function LiveTrades({ address, marketType }: LiveTradesProps) {
   const filteredTwaps = twapOrders.filter(twap => {
     if (marketType === 'all') return true;
     if (marketType === 'spot') return twap.coin.startsWith('@');
+    if (marketType === 'bskts') return !!bsktsCoins?.has(twap.coin);
     return !twap.coin.startsWith('@');
   });
 

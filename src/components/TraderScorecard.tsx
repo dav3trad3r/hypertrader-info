@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Gauge, Info } from 'lucide-react';
-import { fetchOpenExposure, type MarketType, type OpenExposure, type TradingSummary } from '@/lib/hyperliquid';
+import { fetchOpenExposure, marketLabel as marketLabelFor, type MarketType, type OpenExposure, type TradingSummary } from '@/lib/hyperliquid';
 import { computeEquityStats, MIN_SHARPE_DAYS, type EquityPoint, type TradeStats } from '@/lib/pnl';
 import { cn, formatCurrency } from '@/lib/utils';
 
@@ -110,7 +110,7 @@ export function TraderScorecard({ tradeStats, summary, equity, address, marketTy
   const costs = summary.totalFees - summary.totalFunding;
   const accountValue = summary.accountValue ?? null;
   const notional = exposure ? exposure.long + exposure.short : null;
-  const marketLabel = marketType === 'all' ? 'All markets' : marketType === 'perps' ? 'Perps' : 'Spot';
+  const marketLabel = marketLabelFor(marketType, 'All markets');
 
   return (
     <div className="bg-card border border-border rounded-lg p-4 sm:p-6">

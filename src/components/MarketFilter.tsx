@@ -8,22 +8,27 @@ interface MarketFilterProps {
     all: number;
     perps: number;
     spot: number;
+    /** Perp fills placed through bskts.xyz; the button only shows when there are some. */
+    bskts: number;
   };
 }
 
-const FILTERS: { value: MarketType; label: string }[] = [
+const FILTERS: { value: MarketType; label: string; title?: string }[] = [
   { value: 'all', label: 'All' },
   { value: 'perps', label: 'Perps' },
   { value: 'spot', label: 'Spot' },
+  { value: 'bskts', label: 'bskts', title: 'Perp orders placed through bskts.xyz index baskets' },
 ];
 
 export function MarketFilter({ value, onChange, counts }: MarketFilterProps) {
+  const filters = FILTERS.filter(f => f.value !== 'bskts' || counts.bskts > 0);
   return (
     <div className="inline-flex items-center gap-1 p-1 bg-secondary rounded-lg">
-      {FILTERS.map((filter) => (
+      {filters.map((filter) => (
         <button
           key={filter.value}
           onClick={() => onChange(filter.value)}
+          title={filter.title}
           className={cn(
             "px-4 py-2 text-sm font-medium rounded-md transition-all duration-200",
             value === filter.value

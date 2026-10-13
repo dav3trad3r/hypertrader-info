@@ -3,14 +3,14 @@ import { toPng } from 'html-to-image';
 import { Download, Share2, Calendar, TrendingUp, TrendingDown, Trophy, Target } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { type TradingSummary, type DailyPnL } from '@/lib/hyperliquid';
+import { marketLabel, type MarketType, type TradingSummary, type DailyPnL } from '@/lib/hyperliquid';
 import { cn, formatCurrency } from '@/lib/utils';
 
 interface SharePnLCardProps {
   summary: TradingSummary;
   dailyPnL: DailyPnL[];
   address: string;
-  marketType: 'all' | 'perps' | 'spot';
+  marketType: MarketType;
 }
 
 function formatAddress(address: string): string {
@@ -143,7 +143,7 @@ export function SharePnLCard({ summary, dailyPnL, address, marketType }: SharePn
                 </div>
               </div>
               <div className="text-xs px-2 py-1 rounded-full bg-primary/20 text-primary font-medium">
-                {marketType === 'all' ? 'All Markets' : marketType === 'perps' ? 'Perps' : 'Spot'}
+                {marketLabel(marketType)}
               </div>
             </div>
 
