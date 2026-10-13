@@ -21,6 +21,8 @@ import { bsktsCoins } from '@/lib/bskts';
 import { useBasketPositions } from '@/hooks/useBasketPositions';
 import { BasketPositions } from '@/components/BasketPositions';
 import { TopBaskets } from '@/components/TopBaskets';
+import { usePapertrade } from '@/hooks/usePapertrade';
+import { PapertradeAccount } from '@/components/PapertradeAccount';
 
 const NO_FILLS: never[] = [];
 
@@ -88,6 +90,19 @@ const Index = () => {
   const bsktsCoinSet = useMemo(() => bsktsCoins(rawFills), [rawFills]);
   // Under the bskts filter, positions regroup by basket (fills are already bskts-only there)
   const baskets = useBasketPositions(marketType === 'bskts' ? (filteredData?.fills ?? NO_FILLS) : NO_FILLS);
+  // papertrade.xyz: off-exchange synthetic perps for the same address, fetched separately
+  const papertrade = usePapertrade(address);
+  const hasPapertrade = papertrade.trades.length > 0;
+  const hasData = rawFills.length > 0 || hasPapertrade;
+  // A Papertrade-only address has no Hyperliquid fills; that is not an error.
+  const isNoHistoryError = !!error && /no trading history/i.test(error);
+
+  // Land on the venue that has data when Hyperliquid has none, and leave it when it no longer applies.
+  useEffect(() => {
+    if (isLoading || papertrade.isLoading) return;
+    if (rawFills.length === 0 && hasPapertrade && marketType !== 'papertrade') setMarketType('papertrade');
+    else if (marketType === 'papertrade' && !hasPapertrade && rawFills.length > 0) setMarketType('all');
+  }, [isLoading, papertrade.isLoading, rawFills.length, hasPapertrade, marketType, setMarketType]);
 
   // Auto-fetch if address is in URL params
   useEffect(() => {
@@ -106,7 +121,7 @@ const Index = () => {
     }
   }, [address, searchParams, setSearchParams]);
 
-  const displayData = filteredData;
+  const displayData = marketType === 'papertrade' ? papertrade.view : filteredData;
 
   return (
     <div className="min-h-screen bg-background grid-bg">
@@ -127,7 +142,7 @@ const Index = () => {
         {isLoading && <LoadingSpinner />}
 
         {/* Error State */}
-        {error && !isLoading && (
+        {error && !isLoading && !(isNoHistoryError && hasPapertrade) && (
           <ErrorDisplay
             message={error}
             onRetry={() => address && fetchData(address)}
@@ -135,10 +150,10 @@ const Index = () => {
         )}
 
         {/* Empty State */}
-        {!rawFills.length && !isLoading && !error && <EmptyState />}
+        {!hasData && !isLoading && !error && <EmptyState />}
 
         {/* Data Display */}
-        {rawFills.length > 0 && !isLoading && (
+        {hasData && !isLoading && (
           <div className="space-y-6 animate-fade-in">
             {/* Trading Rules Banner - only for specific address */}
             {address?.toLowerCase() === RULES_ADDRESS && (
@@ -217,7 +232,7 @@ const Index = () => {
                   </div>
                   <div className="flex items-center gap-2 mt-1 flex-wrap">
                     <p className="text-xs text-muted-foreground">
-                      {rawFills.length.toLocaleString()} trades loaded
+                      {(marketType === 'papertrade' ? papertrade.trades.length : rawFills.length).toLocaleString()} trades loaded
                       {trackingInfo && trackingInfo.total_fills > rawFills.length && (
                         <span className="text-primary ml-1">
                           ({trackingInfo.total_fills.toLocaleString()} total in history)
@@ -242,7 +257,7 @@ const Index = () => {
                   <MarketFilter 
                     value={marketType}
                     onChange={setMarketType}
-                    counts={marketCounts}
+                    counts={{ ...marketCounts, papertrade: papertrade.trades.length }}
                   />
                   <ShareProfileButton address={address || ''} />
                   {displayData && (
@@ -261,7 +276,7 @@ const Index = () => {
             {!displayData && (
               <div className="bg-card border border-border rounded-lg p-8 text-center">
                 <p className="text-muted-foreground">
-                  No {marketType === 'perps' ? 'perpetual' : marketType === 'bskts' ? 'bskts' : 'spot'} trades found for this address.
+                  No {marketType === 'perps' ? 'perpetual' : marketType === 'bskts' ? 'bskts' : marketType === 'papertrade' ? 'Papertrade' : 'spot'} trades found for this address.
                 </p>
               </div>
             )}
@@ -278,8 +293,8 @@ const Index = () => {
                       fills={displayData.fills}
                       costs={displayData.costs}
                       isLoadingMonth={false}
-                      loadedMonths={loadedMonths}
-                      onLoadMonth={loadMonth}
+                      loadedMonths={marketType === 'papertrade' ? papertrade.months : loadedMonths}
+                      onLoadMonth={marketType === 'papertrade' ? undefined : loadMonth}
                     />
                   </div>
 
@@ -292,7 +307,7 @@ const Index = () => {
                 <TraderScorecard
                   tradeStats={displayData.tradeStats}
                   summary={displayData.summary}
-                  equity={equity}
+                  equity={marketType === 'papertrade' ? papertrade.equity : equity}
                   address={address || ''}
                   marketType={marketType}
                 />
@@ -300,6 +315,8 @@ const Index = () => {
                 {/* Live Positions - Full width below calendar */}
                 {marketType === 'bskts' ? (
                   <BasketPositions positions={baskets.positions} marks={baskets.marks} isLive={baskets.isLive} />
+                ) : marketType === 'papertrade' ? (
+                  <PapertradeAccount account={papertrade.account} closedTrades={papertrade.trades.length} isLive={papertrade.isLive} />
                 ) : (
                   <LiveTrades
                     address={address || ''}

@@ -13,14 +13,17 @@ import {
 
 import { isBsktsFill } from './bskts';
 
-/** 'bskts' = perp fills placed through bskts.xyz (identified by their client order id). */
-export type MarketType = 'all' | 'perps' | 'spot' | 'bskts';
+/** 'bskts' = perp fills placed through bskts.xyz (identified by their client order id).
+ *  'papertrade' = closed positions on papertrade.xyz (HyperEVM), fetched separately
+ *  and synthesised into fills; never present in an account's Hyperliquid fills. */
+export type MarketType = 'all' | 'perps' | 'spot' | 'bskts' | 'papertrade';
 
 export function marketLabel(marketType: MarketType, allLabel = 'All Markets'): string {
   switch (marketType) {
     case 'perps': return 'Perps';
     case 'spot': return 'Spot';
     case 'bskts': return 'bskts';
+    case 'papertrade': return 'Papertrade';
     default: return allLabel;
   }
 }
@@ -147,6 +150,7 @@ export function filterFillsByMarket(fills: Fill[], marketType: MarketType): Fill
   if (marketType === 'all') return fills;
   if (marketType === 'spot') return fills.filter(f => isSpotTrade(f));
   if (marketType === 'bskts') return fills.filter(f => isBsktsFill(f));
+  if (marketType === 'papertrade') return []; // lives off-exchange; see usePapertrade
   return fills.filter(f => !isSpotTrade(f)); // perps
 }
 

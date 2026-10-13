@@ -92,3 +92,19 @@ Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to run
 ## License
 
 [MIT](LICENSE)
+
+## Venue filters
+
+Besides Hyperliquid's own perps and spot, the Tracker recognises two venues that
+trade for the same address, each shown as an extra market filter only when the
+address has activity there:
+
+- **bskts** (bskts.xyz): index baskets executed as batched Hyperliquid perp orders.
+  Identified by the client order id each order carries; positions are rebuilt per
+  basket from the account's fills (`src/lib/bskts.ts`).
+- **Papertrade** (papertrade.xyz): synthetic perps settled on HyperEVM, so nothing
+  appears in Hyperliquid fills. Closed positions come from Papertrade's query API
+  via a small read-only CORS proxy (`workers/papertrade-proxy`, a Cloudflare Worker
+  routed at `hypertrader.info/api/papertrade/*`) and are mapped onto the fill
+  pipeline (`src/lib/papertrade.ts`). Set `VITE_PAPERTRADE_API` to point a build at
+  a different proxy.

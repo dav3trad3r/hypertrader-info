@@ -1,0 +1,15 @@
+{
+  // Read-only CORS proxy in front of Papertrade's query API (exchange.papertrade.xyz),
+  // which sends no Access-Control-Allow-Origin header. Routed under hypertrader.info so
+  // the SPA calls a same-site path; Cloudflare serves the route ahead of the Railway origin.
+  // Deploy: npx wrangler deploy -c workers/papertrade-proxy/wrangler.jsonc
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "hypertrader-papertrade-proxy",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "routes": [
+    { "pattern": "hypertrader.info/api/papertrade/*", "zone_name": "hypertrader.info" },
+    { "pattern": "www.hypertrader.info/api/papertrade/*", "zone_name": "hypertrader.info" }
+  ],
+  "observability": { "enabled": true }
+}

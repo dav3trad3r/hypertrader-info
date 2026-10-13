@@ -7,20 +7,17 @@ import {
 fetchUserFunding,
   isValidAddress,
   filterFillsByMarket,
-  processDailyPnL,
-  processWeeklyPnL,
-  processAssetPerformance,
-  calculateSummary,
   isSpotTrade,
 } from '@/lib/hyperliquid';
 import { isBsktsFill } from '@/lib/bskts';
+import { buildTradingView } from '@/lib/view';
 import {
   getSpotTokenCache,
   type UserTradingData,
   type MarketType,
   type Fill,
 } from '@/lib/hyperliquid';
-import { attributeCosts, buildRoundTrips, computeTradeStats, type EquityPoint, type FundingPayment } from '@/lib/pnl';
+import { type EquityPoint, type FundingPayment } from '@/lib/pnl';
 import { resolveInput, isENSName } from '@/lib/ens';
 import { toast } from '@/hooks/use-toast';
 
@@ -122,53 +119,19 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
     if (rawFills.length === 0) return null;
     
     const filteredFills = filterFillsByMarket(rawFills, marketType);
-    if (filteredFills.length === 0) return null;
-    
     // Spot has no funding; perps and "all" book it against the positions it was paid on
-    const costs = attributeCosts(filteredFills, marketType === 'spot' ? [] : funding);
-    const tradeStats = computeTradeStats(buildRoundTrips(filteredFills, costs));
-    const dailyPnL = processDailyPnL(filteredFills, costs);
-    const weeklyPnL = processWeeklyPnL(dailyPnL);
-    const assetPerformance = processAssetPerformance(filteredFills, spotTokenCache, costs);
-    const summary = calculateSummary(filteredFills, dailyPnL, costs, tradeStats);
-    
-    // Add account value to summary if available
-    if (accountValue !== null) {
-      summary.accountValue = accountValue;
-    }
-    
-    return {
-      fills: filteredFills,
-      dailyPnL,
-      weeklyPnL,
-      assetPerformance,
-      summary,
-      costs,
-      tradeStats,
-    };
+    return buildTradingView(filteredFills, {
+      funding: marketType === 'spot' ? [] : funding,
+      spotTokenCache,
+      accountValue,
+    });
   }, [rawFills, marketType, spotTokenCache, accountValue, funding]);
 
   // Keep original data for reference
-  const data = useMemo(() => {
-    if (rawFills.length === 0) return null;
-    
-    const costs = attributeCosts(rawFills, funding);
-    const tradeStats = computeTradeStats(buildRoundTrips(rawFills, costs));
-    const dailyPnL = processDailyPnL(rawFills, costs);
-    const weeklyPnL = processWeeklyPnL(dailyPnL);
-    const assetPerformance = processAssetPerformance(rawFills, spotTokenCache, costs);
-    const summary = calculateSummary(rawFills, dailyPnL, costs, tradeStats);
-
-    return {
-      fills: rawFills,
-      dailyPnL,
-      weeklyPnL,
-      assetPerformance,
-      summary,
-      costs,
-      tradeStats,
-    };
-  }, [rawFills, spotTokenCache, funding]);
+  const data = useMemo(
+    () => buildTradingView(rawFills, { funding, spotTokenCache }),
+    [rawFills, spotTokenCache, funding],
+  );
 
   // Load funding in the background once fills are in, back to the oldest loaded fill.
   // Refetches only when older fills arrive (lazy-loaded months, merged history).
