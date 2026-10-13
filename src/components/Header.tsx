@@ -20,7 +20,7 @@ export function Header() {
                 <h1 className="text-xl font-bold text-foreground">
                   Hyper<span className="text-primary">Trader</span>
                 </h1>
-                <p className="text-xs text-muted-foreground">Open-source Hyperliquid PnL Tracker & Analytics</p>
+                <p className="text-xs text-muted-foreground">Open-source Hyperliquid Ecosystem Analytics</p>
               </div>
             </Link>
             
