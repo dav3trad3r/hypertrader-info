@@ -6,6 +6,7 @@
 // and which one. Anything else on the account is ordinary Hyperliquid trading.
 
 import type { Fill } from './hyperliquid';
+import { feeInUsd } from './pnl';
 
 export const BSKTS_SITE = 'https://bskts.xyz';
 
@@ -88,4 +89,204 @@ export function bsktsBasketCounts(fills: Fill[]): { ticker: string; fills: numbe
   return [...counts.entries()]
     .map(([ticker, n]) => ({ ticker, fills: n }))
     .sort((a, b) => b.fills - a.fills);
+}
+
+// ---------------------------------------------------------------------------
+// Per-basket positions, rebuilt from the account's fills.
+//
+// Port of bskts' src/lib/perps/ledger.ts (2026-10-01). Hyperliquid keeps ONE net
+// position per asset per account, so a user long MAG6 and long OPUS has one
+// NVDA position there and the exchange cannot say how much belongs to which
+// basket. Replaying the cloid-tagged fills at average cost per basket per coin
+// recovers the split, the same bookkeeping the exchange does per coin.
+
+
+export interface BasketLeg {
+  coin: string;
+  /** signed: long > 0 */
+  size: number;
+  entryPx: number;
+  /** Fees paid to open what is still held; a partial close takes its share away. */
+  entryFeeUsd: number;
+  /** Everything this leg has ever traded, in USD, for ordering the logo stack. */
+  tradedUsd: number;
+}
+
+export interface BasketPosition {
+  ticker: string;
+  basketId: number;
+  legs: Record<string, BasketLeg>;
+  /** closed profit and loss, before fees */
+  realizedUsd: number;
+  /** every fee the basket's orders paid, bskts' builder fee included */
+  feesUsd: number;
+  /** the part of feesUsd that went to bskts */
+  builderFeesUsd: number;
+  /** first fill of the position now open; 0 when flat */
+  openedAt: number;
+  /** last fill of any kind */
+  lastFillAt: number;
+  fills: number;
+  /** basket orders (open / close / tp / sl), each counted once across its legs */
+  orders: number;
+}
+
+/** Sizes this small are float dust from adding and subtracting lots. */
+const DUST = 1e-9;
+
+/** Apply a fill to a signed position at average cost. Returns the profit closed (before fees). */
+export function applyBasketFill(
+  leg: BasketLeg,
+  f: { isBuy: boolean; size: number; px: number; feeUsd: number },
+): number {
+  const delta = f.isBuy ? f.size : -f.size;
+  const adding = leg.size === 0 || Math.sign(delta) === Math.sign(leg.size);
+  leg.tradedUsd += f.size * f.px;
+  if (adding) {
+    const total = Math.abs(leg.size) + f.size;
+    leg.entryPx = (Math.abs(leg.size) * leg.entryPx + f.size * f.px) / total;
+    leg.size += delta;
+    leg.entryFeeUsd += f.feeUsd;
+    return 0;
+  }
+  const before = Math.abs(leg.size);
+  const closed = Math.min(f.size, before);
+  const realized = closed * (f.px - leg.entryPx) * Math.sign(leg.size);
+  leg.size += delta;
+  if (Math.abs(leg.size) < DUST) {
+    leg.size = 0;
+    leg.entryPx = 0;
+    leg.entryFeeUsd = 0;
+  } else if (f.size > closed) {
+    // through zero: what is left was opened by this fill, with its share of the fee
+    leg.entryPx = f.px;
+    leg.entryFeeUsd = f.feeUsd * ((f.size - closed) / f.size);
+  } else {
+    leg.entryFeeUsd *= (before - closed) / before;
+  }
+  return realized;
+}
+
+export function isBasketOpen(pos: BasketPosition): boolean {
+  return Object.values(pos.legs).some(l => l.size !== 0);
+}
+
+/** Every basket's position from the account's fills. Fills without a bskts
+ *  client order id are ignored: nothing can place them in a basket. */
+export function reduceBsktsFills(fills: Fill[]): BasketPosition[] {
+  const out = new Map<string, BasketPosition>();
+  const seenOrders = new Set<string>();
+  for (const f of [...fills].sort((a, b) => a.time - b.time)) {
+    const id = parseBsktsCloid(f.cloid);
+    if (!id) continue;
+    let pos = out.get(id.ticker);
+    if (!pos) {
+      pos = {
+        ticker: id.ticker,
+        basketId: id.basketId,
+        legs: {},
+        realizedUsd: 0,
+        feesUsd: 0,
+        builderFeesUsd: 0,
+        openedAt: 0,
+        lastFillAt: 0,
+        fills: 0,
+        orders: 0,
+      };
+      out.set(id.ticker, pos);
+    }
+    const wasOpen = isBasketOpen(pos);
+    const leg = (pos.legs[f.coin] ??= { coin: f.coin, size: 0, entryPx: 0, entryFeeUsd: 0, tradedUsd: 0 });
+    const feeUsd = feeInUsd(f);
+    pos.realizedUsd += applyBasketFill(leg, {
+      isBuy: f.side === 'B',
+      size: parseFloat(f.sz) || 0,
+      px: parseFloat(f.px) || 0,
+      feeUsd,
+    });
+    pos.feesUsd += feeUsd;
+    pos.builderFeesUsd += parseFloat(f.builderFee ?? '0') || 0;
+    pos.fills += 1;
+    pos.lastFillAt = Math.max(pos.lastFillAt, f.time);
+    if (!seenOrders.has(id.orderId)) {
+      seenOrders.add(id.orderId);
+      pos.orders += 1;
+    }
+    if (!wasOpen && isBasketOpen(pos)) pos.openedAt = f.time;
+    if (!isBasketOpen(pos)) pos.openedAt = 0;
+  }
+  return [...out.values()].sort((a, b) => b.lastFillAt - a.lastFillAt);
+}
+
+/** A basket's coins, heaviest first: by what is held now, then by what was traded. */
+export function basketSymbols(pos: BasketPosition): string[] {
+  return Object.values(pos.legs)
+    .sort((a, b) => {
+      const held = Math.abs(b.size) * b.entryPx - Math.abs(a.size) * a.entryPx;
+      return held !== 0 ? held : b.tradedUsd - a.tradedUsd;
+    })
+    .map(l => l.coin);
+}
+
+export interface BasketValuation {
+  /** Σ |size| × mark over open legs */
+  valueUsd: number;
+  /** Σ |size| × entry over open legs */
+  costUsd: number;
+  /** Σ size × (mark − entry); legs without a mark contribute 0 and set `partial` */
+  unrealizedUsd: number;
+  partial: boolean;
+}
+
+export function valueBasket(pos: BasketPosition, marks: Map<string, number>): BasketValuation {
+  let valueUsd = 0, costUsd = 0, unrealizedUsd = 0, partial = false;
+  for (const l of Object.values(pos.legs)) {
+    if (l.size === 0) continue;
+    const mark = marks.get(l.coin);
+    costUsd += Math.abs(l.size) * l.entryPx;
+    if (mark === undefined) { partial = true; continue; }
+    valueUsd += Math.abs(l.size) * mark;
+    unrealizedUsd += l.size * (mark - l.entryPx);
+  }
+  return { valueUsd, costUsd, unrealizedUsd, partial };
+}
+
+/** Mid prices for the given coins. Hyperliquid serves each builder dex's mids
+ *  separately ("xyz:NVDA" lives under dex "xyz"), so one call per dex touched. */
+export async function fetchMarks(coins: Iterable<string>, signal?: AbortSignal): Promise<Map<string, number>> {
+  const dexes = new Set<string>();
+  for (const c of coins) dexes.add(c.includes(':') ? c.slice(0, c.indexOf(':')) : '');
+  const marks = new Map<string, number>();
+  await Promise.all([...dexes].map(async dex => {
+    const res = await fetch('https://api.hyperliquid.xyz/info', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(dex ? { type: 'allMids', dex } : { type: 'allMids' }),
+      signal,
+    });
+    if (!res.ok) return;
+    const mids = (await res.json()) as Record<string, string>;
+    for (const [coin, px] of Object.entries(mids)) {
+      const n = parseFloat(px);
+      if (Number.isFinite(n)) marks.set(coin, n);
+    }
+  }));
+  return marks;
+}
+
+// ---------------------------------------------------------------------------
+// Logos. bskts has no artwork per basket; its mark is the constituents' logos
+// stacked, heaviest first (src/components/basket-logo.tsx). The files live at
+// bskts.xyz/logos/<SYMBOL>.<ext>; nearly all are SVG.
+
+const LOGO_EXT: Record<string, string> = { META: 'png', PONS: 'jpg', cbBTC: 'webp', UP: 'avif' };
+
+/** "xyz:NVDA" -> "NVDA" */
+export function coinSymbol(coin: string): string {
+  return coin.includes(':') ? coin.slice(coin.indexOf(':') + 1) : coin;
+}
+
+export function bsktsLogoUrl(coin: string): string {
+  const sym = coinSymbol(coin);
+  return `${BSKTS_SITE}/logos/${sym}.${LOGO_EXT[sym] ?? 'svg'}`;
 }

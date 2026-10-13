@@ -18,6 +18,11 @@ import { LiveTrades } from '@/components/LiveTrades';
 import { ShareProfileButton } from '@/components/ShareProfileButton';
 import { TradingRulesBanner } from '@/components/TradingRulesBanner';
 import { bsktsCoins } from '@/lib/bskts';
+import { useBasketPositions } from '@/hooks/useBasketPositions';
+import { BasketPositions } from '@/components/BasketPositions';
+import { TopBaskets } from '@/components/TopBaskets';
+
+const NO_FILLS: never[] = [];
 
 // Address that shows the trading rules banner
 const RULES_ADDRESS = '0xF5dbd88878Ea8ED3992c883871a77bb146E6b619'.toLowerCase();
@@ -81,6 +86,8 @@ const Index = () => {
 
   // Perp coins traded through bskts.xyz on this account (scopes Live Positions under the bskts filter)
   const bsktsCoinSet = useMemo(() => bsktsCoins(rawFills), [rawFills]);
+  // Under the bskts filter, positions regroup by basket (fills are already bskts-only there)
+  const baskets = useBasketPositions(marketType === 'bskts' ? (filteredData?.fills ?? NO_FILLS) : NO_FILLS);
 
   // Auto-fetch if address is in URL params
   useEffect(() => {
@@ -291,15 +298,23 @@ const Index = () => {
                 />
 
                 {/* Live Positions - Full width below calendar */}
-                <LiveTrades
-                  address={address || ''}
-                  marketType={marketType}
-                  bsktsCoins={bsktsCoinSet}
-                />
+                {marketType === 'bskts' ? (
+                  <BasketPositions positions={baskets.positions} marks={baskets.marks} isLive={baskets.isLive} />
+                ) : (
+                  <LiveTrades
+                    address={address || ''}
+                    marketType={marketType}
+                    bsktsCoins={bsktsCoinSet}
+                  />
+                )}
 
                 {/* Bottom Section */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <TopAssets assets={displayData.assetPerformance} />
+                  {marketType === 'bskts' ? (
+                    <TopBaskets positions={baskets.positions} marks={baskets.marks} />
+                  ) : (
+                    <TopAssets assets={displayData.assetPerformance} />
+                  )}
                   <WeeklyBreakdown weeklyPnL={displayData.weeklyPnL} />
                 </div>
               </>
