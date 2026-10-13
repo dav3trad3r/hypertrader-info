@@ -17,6 +17,9 @@ import { SharePnLCard } from '@/components/SharePnLCard';
 import { LiveTrades } from '@/components/LiveTrades';
 import { ShareProfileButton } from '@/components/ShareProfileButton';
 import { TradingRulesBanner } from '@/components/TradingRulesBanner';
+import { BsktsPositions } from '@/components/BsktsPositions';
+import { useBsktsAccount } from '@/hooks/useBsktsAccount';
+import { hasBsktsActivity } from '@/lib/bskts';
 
 // Address that shows the trading rules banner
 const RULES_ADDRESS = '0xF5dbd88878Ea8ED3992c883871a77bb146E6b619'.toLowerCase();
@@ -78,6 +81,12 @@ const Index = () => {
     refreshNow,
   } = useHyperliquidData();
 
+  // Same EVM address on Robinhood Chain: bskts baskets, if any.
+  const bskts = useBsktsAccount(address);
+  const hasBskts = hasBsktsActivity(bskts.account);
+  // A bskts-only wallet has no Hyperliquid fills; don't call that an error.
+  const isNoHistoryError = !!error && /no trading history/i.test(error);
+
   // Auto-fetch if address is in URL params
   useEffect(() => {
     const urlAddress = searchParams.get('address');
@@ -116,11 +125,21 @@ const Index = () => {
         {isLoading && <LoadingSpinner />}
 
         {/* Error State */}
-        {error && !isLoading && (
-          <ErrorDisplay 
-            message={error} 
+        {error && !isLoading && !(isNoHistoryError && hasBskts) && (
+          <ErrorDisplay
+            message={error}
             onRetry={() => address && fetchData(address)}
           />
+        )}
+
+        {/* bskts-only wallets: baskets on Robinhood Chain with no Hyperliquid history. */}
+        {address && !rawFills.length && !isLoading && hasBskts && (
+          <div className="space-y-4 mb-6 animate-fade-in">
+            <BsktsPositions account={bskts.account} isLive={bskts.isLive} />
+            <p className="text-center text-sm text-muted-foreground">
+              No Hyperliquid trading history for this address yet. Showing bskts holdings only.
+            </p>
+          </div>
         )}
 
         {/* Empty State */}
@@ -285,6 +304,9 @@ const Index = () => {
                   address={address || ''}
                   marketType={marketType}
                 />
+
+                {/* bskts baskets on Robinhood Chain (same EVM address); renders nothing for HL-only addresses */}
+                <BsktsPositions account={bskts.account} isLive={bskts.isLive} />
 
                 {/* Live Positions - Full width below calendar */}
                 <LiveTrades 
