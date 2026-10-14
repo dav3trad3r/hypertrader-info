@@ -20,7 +20,8 @@ export function Header() {
     <header className="border-b border-border bg-card/80 backdrop-blur-sm sticky top-0 z-50">
       <div className="container mx-auto px-4 py-4">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-6">
+          {/* On phones the strip wraps onto its own row under the wordmark */}
+          <div className="flex flex-1 min-w-0 flex-wrap items-center gap-x-6 gap-y-2">
             <Link to="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
               <div className="p-2 rounded-lg bg-primary/10 glow-teal">
                 <TrendingUp className="w-6 h-6 text-primary" />
@@ -34,7 +35,10 @@ export function Header() {
             </Link>
 
             {/* Supported protocols */}
-            <div className="hidden sm:flex items-center gap-2 pl-6 border-l border-border" aria-label="Supported protocols">
+            <div
+              className="flex basis-full sm:basis-auto items-center gap-2 sm:pl-6 sm:border-l border-border"
+              aria-label="Supported protocols"
+            >
               <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Tracks</span>
               <div className="flex items-center gap-1">
                 {PROTOCOLS.map(p => (
