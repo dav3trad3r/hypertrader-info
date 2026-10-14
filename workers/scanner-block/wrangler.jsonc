@@ -1,0 +1,35 @@
+{
+  // Drops vulnerability-scanner probes at Cloudflare's edge so they never reach
+  // the Railway origin. Zone-level WAF rules would be the usual tool; this Worker
+  // does the same job with only the Workers permissions wrangler holds.
+  // Route patterns may only wildcard the END of the path, so prefix-shaped
+  // probes are caught here and the rest (*.php, /frontend/.env, ...) by the
+  // origin Caddyfile's 404 matcher.
+  // Deploy: npx wrangler deploy -c workers/scanner-block/wrangler.jsonc
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "hypertrader-scanner-block",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "routes": [
+    { "pattern": "hypertrader.info/.env*", "zone_name": "hypertrader.info" },
+    { "pattern": "hypertrader.info/.git/*", "zone_name": "hypertrader.info" },
+    { "pattern": "hypertrader.info/.aws/*", "zone_name": "hypertrader.info" },
+    { "pattern": "hypertrader.info/.ssh/*", "zone_name": "hypertrader.info" },
+    { "pattern": "hypertrader.info/.amper/*", "zone_name": "hypertrader.info" },
+    { "pattern": "hypertrader.info/@fs/*", "zone_name": "hypertrader.info" },
+    { "pattern": "hypertrader.info/@vite/*", "zone_name": "hypertrader.info" },
+    { "pattern": "hypertrader.info/frontend/.env*", "zone_name": "hypertrader.info" },
+    { "pattern": "hypertrader.info/api/.env*", "zone_name": "hypertrader.info" },
+    { "pattern": "hypertrader.info/wp-*", "zone_name": "hypertrader.info" },
+    { "pattern": "hypertrader.info/xmlrpc.php*", "zone_name": "hypertrader.info" },
+    { "pattern": "hypertrader.info/userfiles*", "zone_name": "hypertrader.info" },
+    { "pattern": "hypertrader.info/cgi-bin/*", "zone_name": "hypertrader.info" },
+    { "pattern": "hypertrader.info/vendor/*", "zone_name": "hypertrader.info" },
+    { "pattern": "hypertrader.info/actuator/*", "zone_name": "hypertrader.info" },
+    { "pattern": "www.hypertrader.info/.env*", "zone_name": "hypertrader.info" },
+    { "pattern": "www.hypertrader.info/.git/*", "zone_name": "hypertrader.info" },
+    { "pattern": "www.hypertrader.info/@fs/*", "zone_name": "hypertrader.info" },
+    { "pattern": "www.hypertrader.info/wp-*", "zone_name": "hypertrader.info" }
+  ],
+  "observability": { "enabled": true }
+}

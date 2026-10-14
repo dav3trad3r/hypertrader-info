@@ -108,3 +108,12 @@ address has activity there:
   routed at `hypertrader.info/api/papertrade/*`) and are mapped onto the fill
   pipeline (`src/lib/papertrade.ts`). Set `VITE_PAPERTRADE_API` to point a build at
   a different proxy.
+
+## Serving and edge
+
+- `Caddyfile` (repo root) replaces Railpack's default: hashed `/assets/*` are cached for a
+  year, `index.html` is never cached, and scanner probes (`/.env`, `/@fs`, `*.php`, `wp-*`)
+  get a 404 instead of the SPA fallback.
+- `workers/scanner-block`: a Cloudflare Worker routed on the same probe paths so they are
+  answered at the edge and never reach the origin.
+- `workers/papertrade-proxy`: see Venue filters above.
