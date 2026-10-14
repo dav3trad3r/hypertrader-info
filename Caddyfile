@@ -7,6 +7,11 @@
 #   3. Scanner probes (/.env, /@fs/.env, *.php, wp-*) get a 404 instead of the
 #      SPA fallback's 200 + index.html, which kept inviting them back and counted
 #      as "pageviews" in analytics.
+#
+# The probe check and the SPA serving sit in separate `handle` blocks on purpose:
+# Caddy orders a top-level `try_files` before `respond`, so a bare
+# `respond @scanner 404` ran against the already-rewritten /index.html and never
+# matched. The first matching handle wins and sees the original path.
 
 {
 	admin off
@@ -27,43 +32,46 @@
 		format json
 	}
 
-	respond /health 200
-
 	header {
 		X-Content-Type-Options "nosniff"
 		Referrer-Policy "strict-origin-when-cross-origin"
 		-Server
 	}
 
-	# Vulnerability scanners: answer 404 before the SPA fallback can say 200.
+	respond /health 200
+
+	# Vulnerability scanners: a plain 404, no index.html.
 	@scanner {
 		path /.env* /*/.env* /.git/* /*/.git/* /@fs/* /@vite/* /*.php /*.php/* /wp-admin* /wp-login* /wp-includes/* /wp-content/* /xmlrpc.php /userfiles* /.amper/* /cgi-bin/* /vendor/phpunit/* /.aws/* /.ssh/* /config.json /phpinfo* /telescope/* /_profiler/* /actuator/* /server-status
 	}
-	respond @scanner 404
-
-	root * dist
-
-	# Vite names bundles by content hash, so they never change under one name.
-	@assets path /assets/*
-	header @assets Cache-Control "public, max-age=31536000, immutable"
-
-	# Fonts, images and the OG card live at the root; revalidate daily.
-	@media path *.png *.svg *.jpg *.jpeg *.gif *.webp *.avif *.ico *.woff *.woff2
-	header @media Cache-Control "public, max-age=86400"
-
-	# The shell must always be fresh so new bundles are picked up.
-	@html path / /index.html
-	header @html Cache-Control "no-cache"
-
-	file_server {
-		hide .git
-		hide .env*
+	handle @scanner {
+		respond "Not found" 404
 	}
 
-	encode {
-		gzip
-		zstd
-	}
+	handle {
+		root * dist
 
-	try_files {path} {path}.html {path}/index.html /index.html
+		# Vite names bundles by content hash, so they never change under one name.
+		@assets path /assets/*
+		header @assets Cache-Control "public, max-age=31536000, immutable"
+
+		# Fonts, images and the OG card live at the root; revalidate daily.
+		@media path *.png *.svg *.jpg *.jpeg *.gif *.webp *.avif *.ico *.woff *.woff2
+		header @media Cache-Control "public, max-age=86400"
+
+		# The shell must always be fresh so new bundles are picked up.
+		@html path / /index.html
+		header @html Cache-Control "no-cache"
+
+		encode {
+			gzip
+			zstd
+		}
+
+		try_files {path} {path}.html {path}/index.html /index.html
+		file_server {
+			hide .git
+			hide .env*
+		}
+	}
 }
