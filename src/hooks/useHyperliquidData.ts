@@ -19,6 +19,7 @@ import {
 } from '@/lib/hyperliquid';
 import { type EquityPoint, type FundingPayment } from '@/lib/pnl';
 import { resolveInput, isENSName } from '@/lib/ens';
+import { resolveBsktsPerpsAccount, type BsktsPerpsLink } from '@/lib/bsktsAccount';
 import { toast } from '@/hooks/use-toast';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -52,6 +53,8 @@ export interface UseHyperliquidDataReturn {
   error: string | null;
   address: string;
   ensName: string | null;
+  /** Set when the searched address was a bskts account: its perps run on this Hyperliquid account. */
+  bsktsLink: BsktsPerpsLink | null;
   marketType: MarketType;
   setMarketType: (type: MarketType) => void;
   marketCounts: { all: number; perps: number; spot: number; bskts: number };
@@ -79,6 +82,7 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
   const [error, setError] = useState<string | null>(null);
   const [address, setAddress] = useState('');
   const [ensName, setEnsName] = useState<string | null>(null);
+  const [bsktsLink, setBsktsLink] = useState<BsktsPerpsLink | null>(null);
   const [marketType, setMarketType] = useState<MarketType>('all');
   const [spotTokenCache, setSpotTokenCache] = useState<Map<number, string>>(new Map());
   const [accountValue, setAccountValue] = useState<number | null>(null);
@@ -235,6 +239,7 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
     setHasMoreHistory(false);
     setHitApiLimit(false);
     setEnsName(null);
+    setBsktsLink(null);
     setTrackingInfo(null);
     setAccountValue(null);
     setFunding([]);
@@ -272,8 +277,39 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
       
       setAddress(resolvedAddress);
       setEnsName(resolvedENS);
-      
-      // Step 1: Trigger sync to Supabase (runs in background)
+
+      // A bskts account (a contract on Robinhood Chain) has no Hyperliquid history
+      // of its own; its perps run on the wallet its transfers credit. Look that up
+      // alongside the normal fetch: one cheap code check for an ordinary wallet.
+      const linkPromise = resolveBsktsPerpsAccount(resolvedAddress, abortControllerRef.current.signal)
+        .catch(err => {
+          console.warn('bskts account lookup failed:', err);
+          return null;
+        });
+
+      // Fetch from the Hyperliquid API for immediate display, with the portfolio
+      // (total account value + mark-to-market history)
+      let target = resolvedAddress;
+      let [apiResult, portfolio] = await Promise.all([
+        fetchAllAvailableFills(target),
+        fetchPortfolio(target)
+      ]);
+      let linked = false;
+      if (apiResult.fills.length === 0) {
+        const link = await linkPromise;
+        if (link) {
+          linked = true;
+          target = link.perpsAccount;
+          setBsktsLink(link);
+          setAddress(target);
+          [apiResult, portfolio] = await Promise.all([
+            fetchAllAvailableFills(target),
+            fetchPortfolio(target)
+          ]);
+        }
+      }
+
+      // Trigger sync to Supabase (runs in background)
       setIsSyncing(true);
       const syncPromise = fetch(`${SUPABASE_URL}/functions/v1/sync-fills`, {
         method: 'POST',
@@ -281,7 +317,7 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
         },
-        body: JSON.stringify({ address: resolvedAddress })
+        body: JSON.stringify({ address: target })
       }).then(async (res) => {
         if (res.ok) {
           const syncResult = await res.json();
@@ -296,13 +332,6 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
       }).finally(() => {
         setIsSyncing(false);
       });
-      
-      // Step 2: Simultaneously fetch from Hyperliquid API for immediate display
-      // Also fetch the portfolio: total account value + mark-to-market history
-      const [apiResult, portfolio] = await Promise.all([
-        fetchAllAvailableFills(resolvedAddress),
-        fetchPortfolio(resolvedAddress)
-      ]);
 
       if (portfolio?.accountValue != null) {
         setAccountValue(portfolio.accountValue);
@@ -312,7 +341,7 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
       if (apiResult.fills.length === 0) {
         // Check if we have historical data in Supabase
         const dbRes = await fetch(
-          `${SUPABASE_URL}/functions/v1/get-fills?address=${resolvedAddress}`,
+          `${SUPABASE_URL}/functions/v1/get-fills?address=${target}`,
           {
             headers: { 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` }
           }
@@ -347,6 +376,8 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
       } else {
         setRawFills(apiResult.fills);
         setHitApiLimit(apiResult.hitApiLimit);
+        // Searched a bskts account: open on its basket perps
+        if (linked) setMarketType('bskts');
         
         // Mark months that have data as loaded
         const monthsWithData = new Set<string>();
@@ -360,7 +391,7 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
         syncPromise.then(async () => {
           try {
             const dbRes = await fetch(
-              `${SUPABASE_URL}/functions/v1/get-fills?address=${resolvedAddress}`,
+              `${SUPABASE_URL}/functions/v1/get-fills?address=${target}`,
               {
                 headers: { 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` }
               }
@@ -443,6 +474,7 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
     setError(null);
     setAddress('');
     setEnsName(null);
+    setBsktsLink(null);
     setMarketType('all');
     setLoadedMonths(new Set());
     attemptedMonths.current = new Set();
@@ -561,6 +593,7 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
     error,
     address,
     ensName,
+    bsktsLink,
     marketType,
     setMarketType,
     marketCounts,

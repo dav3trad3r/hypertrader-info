@@ -18,6 +18,7 @@ import { LiveTrades } from '@/components/LiveTrades';
 import { ShareProfileButton } from '@/components/ShareProfileButton';
 import { TradingRulesBanner } from '@/components/TradingRulesBanner';
 import { bsktsCoins } from '@/lib/bskts';
+import bsktsMark from '@/assets/bskts.svg';
 import { useBasketPositions } from '@/hooks/useBasketPositions';
 import { BasketPositions } from '@/components/BasketPositions';
 import { TopBaskets } from '@/components/TopBaskets';
@@ -76,6 +77,7 @@ const Index = () => {
     error, 
     address,
     ensName,
+    bsktsLink,
     marketType,
     setMarketType,
     marketCounts,
@@ -112,14 +114,16 @@ const Index = () => {
     }
   }, [searchParams, address, isLoading, fetchData]);
 
-  // Update URL when address changes
+  // Update URL when address changes. A searched bskts account stays in the URL
+  // (and the search box) even though its perps load from the linked wallet.
+  const shownAddress = bsktsLink?.account ?? address;
   useEffect(() => {
-    if (address) {
-      setSearchParams({ address }, { replace: true });
+    if (shownAddress) {
+      setSearchParams({ address: shownAddress }, { replace: true });
     } else if (searchParams.has('address')) {
       setSearchParams({}, { replace: true });
     }
-  }, [address, searchParams, setSearchParams]);
+  }, [shownAddress, address, searchParams, setSearchParams]);
 
   const displayData = marketType === 'papertrade' ? papertrade.view : filteredData;
 
@@ -133,7 +137,7 @@ const Index = () => {
           <AddressSearch
             onSearch={fetchData}
             isLoading={isLoading}
-            currentAddress={address}
+            currentAddress={shownAddress}
             onClear={clearData}
           />
         </div>
@@ -145,7 +149,7 @@ const Index = () => {
         {error && !isLoading && !(isNoHistoryError && hasPapertrade) && (
           <ErrorDisplay
             message={error}
-            onRetry={() => address && fetchData(address)}
+            onRetry={() => shownAddress && fetchData(shownAddress)}
           />
         )}
 
@@ -219,6 +223,23 @@ const Index = () => {
             <div className="bg-card border border-border rounded-lg p-4">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div>
+                  {bsktsLink && (
+                    <div className="flex items-center gap-1.5 mb-1.5 text-xs text-muted-foreground flex-wrap">
+                      <img src={bsktsMark} alt="" width={14} height={14} className="w-3.5 h-3.5 rounded-[3px]" />
+                      <span>bskts account</span>
+                      <span className="font-mono text-foreground">{bsktsLink.account.slice(0, 6)}…{bsktsLink.account.slice(-4)}</span>
+                      <span>trades perps from its Hyperliquid wallet</span>
+                      <a
+                        href={`https://robinhoodchain.blockscout.com/tx/${bsktsLink.txHash}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline"
+                        title="The transfer that links the two"
+                      >
+                        (via transfer)
+                      </a>
+                    </div>
+                  )}
                   <p className="text-xs text-muted-foreground">Viewing trading history for</p>
                   <div className="flex items-center gap-2 mt-0.5">
                     {ensName && (
