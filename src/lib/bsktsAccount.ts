@@ -65,16 +65,32 @@ export function decodeDepositLog(log: Pick<RpcLog, 'data'>): { recipient: string
 
 type Fetcher = (url: string, init?: RequestInit) => Promise<Response>;
 
-async function rpc<T>(method: string, params: unknown[], fetcher: Fetcher, signal?: AbortSignal): Promise<T> {
-  const res = await fetcher(RH_RPC, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
-    signal,
-  });
-  const j = (await res.json()) as { result?: T; error?: { message: string } };
-  if (j.error) throw new Error(`Robinhood Chain ${method}: ${j.error.message}`);
-  return j.result as T;
+/** One JSON-RPC call to Robinhood Chain, retried. The public RPC intermittently
+ *  answers with a doubled `Access-Control-Allow-Origin: *,*` header (seen
+ *  2026-10-29, about one call in five), which the browser rejects as a network
+ *  error; a retry usually lands on a good response. */
+async function rpc<T>(method: string, params: unknown[], fetcher: Fetcher, signal?: AbortSignal, attempts = 3): Promise<T> {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+    try {
+      const res = await fetcher(RH_RPC, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+        signal,
+      });
+      if (!res.ok) throw new Error(`Robinhood Chain ${method}: HTTP ${res.status}`);
+      const j = (await res.json()) as { result?: T; error?: { message: string } };
+      if (j.error) throw new Error(`Robinhood Chain ${method}: ${j.error.message}`);
+      return j.result as T;
+    } catch (err) {
+      if (signal?.aborted) throw err;
+      lastErr = err;
+      if (i < attempts - 1) await new Promise(r => setTimeout(r, 300 * (i + 1)));
+    }
+  }
+  throw lastErr;
 }
 
 export interface BsktsPerpsLink {

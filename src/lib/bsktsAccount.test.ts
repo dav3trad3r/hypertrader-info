@@ -101,3 +101,16 @@ describe('resolveBsktsPerpsAccount', () => {
     expect(fetcher.mock.calls.filter(c => String(c[1]?.body).includes('eth_getLogs'))).toHaveLength(2);
   });
 });
+
+describe('resolveBsktsPerpsAccount retries', () => {
+  it('retries a call that fails the way a doubled CORS header does', async () => {
+    let calls = 0;
+    const fetcher = vi.fn(async () => {
+      calls++;
+      if (calls === 1) throw new TypeError('Failed to fetch');
+      return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: '0x' }));
+    });
+    expect(await resolveBsktsPerpsAccount(PERPS, undefined, fetcher as unknown as typeof fetch)).toBeNull();
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+});

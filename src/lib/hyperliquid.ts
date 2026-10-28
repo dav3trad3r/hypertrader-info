@@ -245,7 +245,7 @@ const HYPERLIQUID_API = "https://api.hyperliquid.xyz/info";
 // Direct API call that backs off and retries when rate limited or on a server error.
 // The limit is per minute per IP, so a short wait usually clears it; returning the
 // error straight away would make callers treat a 429 as the end of the data.
-async function postInfoDirect(payload: object, attempts = 4): Promise<Response> {
+export async function postInfoDirect(payload: object, attempts = 4): Promise<Response> {
   for (let attempt = 1; ; attempt++) {
     const response = await fetch(HYPERLIQUID_API, {
       method: "POST",
@@ -333,50 +333,12 @@ export function getPerpDexNames(): Promise<string[]> {
   return perpDexNamesPromise;
 }
 
-// Get the proxy URL for edge function
-function getProxyUrl(): string | null {
-  const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-  if (!projectId) return null;
-  return `https://${projectId}.supabase.co/functions/v1/hyperliquid-proxy`;
-}
-
-// Make API request - tries proxy first, falls back to direct
+// All reads go straight to Hyperliquid. Until 2026-10-29 they went through the
+// old Lovable edge proxy first; it rate-limits at 30 a minute per address and was
+// refusing about one call in four, each refusal costing a wasted round trip before
+// falling back here. Hyperliquid limits per client IP, so every visitor's browser
+// has its own budget and the proxy no longer protects anything.
 async function makeApiRequest(payload: object): Promise<Response> {
-  const proxyUrl = getProxyUrl();
-  const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-  
-  // Try proxy first if available
-  if (proxyUrl && anonKey) {
-    try {
-      const response = await fetch(proxyUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "apikey": anonKey,
-          "Authorization": `Bearer ${anonKey}`,
-        },
-        body: JSON.stringify(payload),
-      });
-      
-      if (response.ok) {
-        console.log(`Proxy request successful (cache: ${response.headers.get('X-Cache') || 'N/A'})`);
-        return response;
-      }
-      
-      // If rate limited, throw specific error
-      if (response.status === 429) {
-        const error = await response.json();
-        throw new Error(error.error || 'Rate limit exceeded');
-      }
-      
-      // Fall through to direct API for other errors
-      console.warn('Proxy request failed, falling back to direct API');
-    } catch (error) {
-      console.warn('Proxy unavailable, using direct API:', error);
-    }
-  }
-  
-  // Fallback to direct API
   return postInfoDirect(payload);
 }
 

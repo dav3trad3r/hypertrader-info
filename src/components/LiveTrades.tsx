@@ -1,7 +1,8 @@
 import { useState, useEffect, memo } from 'react';
 import { Activity, ArrowUpRight, ArrowDownRight, Zap, Clock, TrendingUp, TrendingDown, AlertTriangle } from 'lucide-react';
 import { cn, formatCurrency, formatSize } from '@/lib/utils';
-import { getPerpDexNames, type MarketType } from '@/lib/hyperliquid';
+import { getPerpDexNames, postInfoDirect, type MarketType } from '@/lib/hyperliquid';
+import { isPageHidden, onPageVisible } from '@/lib/visibility';
 import { Progress } from '@/components/ui/progress';
 import { CoinIcon } from '@/components/CoinIcon';
 
@@ -123,54 +124,10 @@ interface TwapSliceFillResponse {
 const HYPERLIQUID_API = "https://api.hyperliquid.xyz/info";
 const POLL_INTERVAL = 10000; // 10 seconds to reduce API load
 
-// Get the proxy URL for edge function
-function getProxyUrl(): string | null {
-  const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-  if (!projectId) return null;
-  return `https://${projectId}.supabase.co/functions/v1/hyperliquid-proxy`;
-}
-
-// Make API request - tries proxy first, falls back to direct
-async function makeApiRequest(payload: object): Promise<Response> {
-  const proxyUrl = getProxyUrl();
-  const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-  
-  // Try proxy first if available
-  if (proxyUrl && anonKey) {
-    try {
-      const response = await fetch(proxyUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "apikey": anonKey,
-          "Authorization": `Bearer ${anonKey}`,
-        },
-        body: JSON.stringify(payload),
-      });
-      
-      if (response.ok) {
-        return response;
-      }
-      
-      // If rate limited, throw specific error
-      if (response.status === 429) {
-        const error = await response.json();
-        throw new Error(error.error || 'Rate limit exceeded');
-      }
-      
-      // Fall through to direct API for other errors
-      console.warn('Proxy request failed, falling back to direct API');
-    } catch (error) {
-      console.warn('Proxy unavailable, using direct API:', error);
-    }
-  }
-  
-  // Fallback to direct API
-  return fetch(HYPERLIQUID_API, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
+// Straight to Hyperliquid (see makeApiRequest in lib/hyperliquid.ts for why the
+// old Lovable proxy is no longer used), with its 429/5xx back-off.
+function makeApiRequest(payload: object): Promise<Response> {
+  return postInfoDirect(payload);
 }
 
 const PerpPositionItem = memo(function PerpPositionItem({ 
@@ -710,9 +667,14 @@ export function LiveTrades({ address, marketType, bsktsCoins }: LiveTradesProps)
     };
 
     fetchPositions();
-    const intervalId = setInterval(fetchPositions, POLL_INTERVAL);
-    
-    return () => clearInterval(intervalId);
+    // Paused in a background tab; refreshed as soon as it is shown again
+    const intervalId = setInterval(() => { if (!isPageHidden()) fetchPositions(); }, POLL_INTERVAL);
+    const offVisible = onPageVisible(fetchPositions);
+
+    return () => {
+      clearInterval(intervalId);
+      offVisible();
+    };
   }, [address]);
 
   // Filter positions by market type
