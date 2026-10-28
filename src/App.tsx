@@ -19,6 +19,8 @@ const App = () => (
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Index />} />
+          {/* Shareable profile link: hypertrader.info/u/0x… (link previews are rendered per address by workers/og) */}
+          <Route path="/u/:address" element={<Index />} />
           <Route path="/sentiment" element={<Sentiment />} />
           <Route path="/whales" element={<Whales />} />
           <Route path="/share/:address" element={<ShareImage />} />

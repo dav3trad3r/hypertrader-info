@@ -62,7 +62,7 @@ export function SharePnLCard({ summary, dailyPnL, address, marketType }: SharePn
       });
       
       const link = document.createElement('a');
-      link.download = `hyperliquid-pnl-${formatAddress(address)}.png`;
+      link.download = `hypertrader-pnl-${formatAddress(address)}.png`;
       link.href = dataUrl;
       link.click();
     } catch (error) {
@@ -86,13 +86,13 @@ export function SharePnLCard({ summary, dailyPnL, address, marketType }: SharePn
       // Convert data URL to blob
       const response = await fetch(dataUrl);
       const blob = await response.blob();
-      const file = new File([blob], 'hyperliquid-pnl.png', { type: 'image/png' });
+      const file = new File([blob], 'hypertrader-pnl.png', { type: 'image/png' });
       
       if (navigator.share && navigator.canShare({ files: [file] })) {
         await navigator.share({
           files: [file],
           title: 'My Hyperliquid PnL',
-          text: `Check out my trading performance on Hyperliquid! ${summary.totalPnl >= 0 ? '📈' : '📉'}`,
+          text: `My Hyperliquid PnL on hypertrader.info ${summary.totalPnl >= 0 ? '📈' : '📉'}`,
         });
       } else {
         // Fallback to download
@@ -235,7 +235,7 @@ export function SharePnLCard({ summary, dailyPnL, address, marketType }: SharePn
                 Generated on {new Date().toLocaleDateString()}
               </div>
               <div className="text-xs font-medium text-primary">
-                hyperliquid.xyz
+                hypertrader.info
               </div>
             </div>
           </div>

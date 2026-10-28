@@ -1,6 +1,7 @@
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { fetchTradingData, filterFillsByMarket, processDailyPnL, calculateSummary, marketLabel, type MarketType, type DailyPnL, type TradingSummary } from '@/lib/hyperliquid';
+import { marketLabel, type MarketType, type DailyPnL, type TradingSummary } from '@/lib/hyperliquid';
+import { loadTradingSnapshot, parseMarket, shareStats } from '@/lib/snapshot';
 import { cn, formatCurrency } from '@/lib/utils';
 import { TrendingUp, TrendingDown, Trophy, Target, Calendar } from 'lucide-react';
 import { useMemo } from 'react';
@@ -17,30 +18,7 @@ interface ShareCardProps {
 }
 
 function ShareCard({ summary, dailyPnL, address, marketType }: ShareCardProps) {
-  const stats = useMemo(() => {
-    let currentStreak = 0;
-    let maxStreak = 0;
-    let bestDay = { date: '', pnl: 0 };
-    let worstDay = { date: '', pnl: 0 };
-
-    const sortedDays = [...dailyPnL].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    
-    for (const day of sortedDays) {
-      if (day.pnl > 0) {
-        currentStreak++;
-        maxStreak = Math.max(maxStreak, currentStreak);
-      } else if (day.pnl < 0) {
-        break;
-      }
-    }
-
-    dailyPnL.forEach(day => {
-      if (day.pnl > bestDay.pnl) bestDay = { date: day.date, pnl: day.pnl };
-      if (day.pnl < worstDay.pnl) worstDay = { date: day.date, pnl: day.pnl };
-    });
-
-    return { currentStreak, maxStreak, bestDay, worstDay };
-  }, [dailyPnL]);
+  const stats = useMemo(() => shareStats(dailyPnL), [dailyPnL]);
 
   const isProfitable = summary.totalPnl >= 0;
 
@@ -58,7 +36,7 @@ function ShareCard({ summary, dailyPnL, address, marketType }: ShareCardProps) {
             <TrendingUp className="w-7 h-7 text-primary" />
           </div>
           <div>
-            <div className="text-2xl font-semibold text-foreground">Hyperliquid</div>
+            <div className="text-2xl font-semibold text-foreground">Hyper<span className="text-primary">Trader</span></div>
             <div className="text-lg text-muted-foreground font-mono">{formatAddress(address)}</div>
           </div>
         </div>
@@ -154,7 +132,7 @@ function ShareCard({ summary, dailyPnL, address, marketType }: ShareCardProps) {
           Generated on {new Date().toLocaleDateString()}
         </div>
         <div className="text-lg font-medium text-primary">
-          hyperliquid.xyz
+          hypertrader.info
         </div>
       </div>
     </div>
@@ -164,11 +142,12 @@ function ShareCard({ summary, dailyPnL, address, marketType }: ShareCardProps) {
 export default function ShareImage() {
   const { address } = useParams<{ address: string }>();
   const [searchParams] = useSearchParams();
-  const marketType = (searchParams.get('market') as MarketType) || 'all';
+  const marketType: MarketType = parseMarket(searchParams.get('market'));
 
+  // The same calculation as the Tracker page (lib/snapshot.ts), so the card matches it
   const { data, isLoading, error } = useQuery({
-    queryKey: ['trading-data', address],
-    queryFn: () => fetchTradingData(address!),
+    queryKey: ['trading-snapshot', address, marketType],
+    queryFn: () => loadTradingSnapshot(address!, marketType),
     enabled: !!address,
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
@@ -189,16 +168,20 @@ export default function ShareImage() {
     );
   }
 
-  // Filter data by market type
-  const filteredFills = filterFillsByMarket(data.fills, marketType);
-  const filteredDailyPnL = processDailyPnL(filteredFills);
-  const filteredSummary = calculateSummary(filteredFills, filteredDailyPnL);
+  const view = data.view;
+  if (!view) {
+    return (
+      <div className="min-h-screen bg-[#141a24] flex items-center justify-center">
+        <div className="text-muted-foreground text-xl">No {marketLabel(marketType, 'trading')} history for this address</div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#141a24] flex items-center justify-center p-4">
       <ShareCard
-        summary={filteredSummary}
-        dailyPnL={filteredDailyPnL}
+        summary={view.summary}
+        dailyPnL={view.dailyPnL}
         address={address!}
         marketType={marketType}
       />

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link2, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import type { MarketType } from '@/lib/hyperliquid';
 import {
   Tooltip,
   TooltipContent,
@@ -10,14 +11,17 @@ import {
 
 interface ShareProfileButtonProps {
   address: string;
+  marketType?: MarketType;
 }
 
-export function ShareProfileButton({ address }: ShareProfileButtonProps) {
+export function ShareProfileButton({ address, marketType = 'all' }: ShareProfileButtonProps) {
   const [copied, setCopied] = useState(false);
 
   const handleShare = async () => {
-    const url = new URL(window.location.origin);
-    url.searchParams.set('address', address);
+    // /u/<address> links get a link preview with this trader's own numbers
+    // (workers/og renders it); ?market= opens the same filter for the reader.
+    const url = new URL(`/u/${address}`, window.location.origin);
+    if (marketType !== 'all') url.searchParams.set('market', marketType);
     
     try {
       await navigator.clipboard.writeText(url.toString());

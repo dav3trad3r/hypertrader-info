@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { parseMarket } from '@/lib/snapshot';
 import { useHyperliquidData } from '@/hooks/useHyperliquidData';
 import { Header } from '@/components/Header';
 import { OpenSourceLinks } from '@/components/OpenSourceLinks';
@@ -62,6 +63,9 @@ function RefreshIndicator({ isRefreshing, lastRefreshed }: { isRefreshing: boole
 
 const Index = () => {
   const [searchParams, setSearchParams] = useSearchParams();
+  // /u/:address is the shareable form of ?address= (see workers/og)
+  const { address: pathAddress } = useParams<{ address?: string }>();
+  const navigate = useNavigate();
   const {
     filteredData,
     equity,
@@ -105,24 +109,41 @@ const Index = () => {
     else if (marketType === 'papertrade' && !hasPapertrade && rawFills.length > 0) setMarketType('all');
   }, [isLoading, papertrade.isLoading, rawFills.length, hasPapertrade, marketType, setMarketType]);
 
-  // Auto-fetch if address is in URL params
+  // Auto-fetch if address is in the URL (/u/:address or ?address=)
   useEffect(() => {
-    const urlAddress = searchParams.get('address');
+    const urlAddress = pathAddress ?? searchParams.get('address');
     if (urlAddress && !address && !isLoading) {
       fetchData(urlAddress);
     }
-  }, [searchParams, address, isLoading, fetchData]);
+  }, [pathAddress, searchParams, address, isLoading, fetchData]);
+
+  // A shared link can name a market (?market=bskts): open on it once the data is in
+  const urlMarket = parseMarket(searchParams.get('market'));
+  const appliedMarketFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (isLoading || !address || urlMarket === 'all' || appliedMarketFor.current === address) return;
+    if (urlMarket === 'papertrade' && papertrade.isLoading) return;
+    appliedMarketFor.current = address;
+    setMarketType(urlMarket);
+  }, [isLoading, address, urlMarket, papertrade.isLoading, setMarketType]);
 
   // Update URL when address changes. A searched bskts account stays in the URL
   // (and the search box) even though its perps load from the linked wallet.
   const shownAddress = bsktsLink?.account ?? address;
   useEffect(() => {
+    if (pathAddress !== undefined) {
+      // On a /u/ link: keep the path form, follow a new search, go home when cleared
+      if (shownAddress && shownAddress.toLowerCase() !== pathAddress.toLowerCase()) {
+        navigate(`/u/${shownAddress}`, { replace: true });
+      }
+      return;
+    }
     if (shownAddress) {
       setSearchParams({ address: shownAddress }, { replace: true });
     } else if (searchParams.has('address')) {
       setSearchParams({}, { replace: true });
     }
-  }, [shownAddress, address, searchParams, setSearchParams]);
+  }, [pathAddress, shownAddress, navigate, searchParams, setSearchParams]);
 
   const displayData = marketType === 'papertrade' ? papertrade.view : filteredData;
 
@@ -137,7 +158,11 @@ const Index = () => {
             onSearch={fetchData}
             isLoading={isLoading}
             currentAddress={shownAddress}
-            onClear={clearData}
+            onClear={() => {
+              clearData();
+              // leaving a /u/ link: otherwise the auto-fetch would load it straight back
+              if (pathAddress) navigate('/', { replace: true });
+            }}
           />
         </div>
 
@@ -272,7 +297,7 @@ const Index = () => {
                     onChange={setMarketType}
                     counts={{ ...marketCounts, papertrade: papertrade.trades.length }}
                   />
-                  <ShareProfileButton address={address || ''} />
+                  <ShareProfileButton address={shownAddress || ''} marketType={marketType} />
                   {displayData && (
                     <SharePnLCard 
                       summary={displayData.summary}
