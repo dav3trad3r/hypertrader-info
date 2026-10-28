@@ -1,0 +1,19 @@
+{
+  // Per-trader link previews (see src/index.ts). Deploy:
+  //   cd workers/og && npm install && env -u CLOUDFLARE_API_TOKEN npx wrangler deploy
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "hypertrader-og",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "rules": [
+    { "type": "Data", "globs": ["**/*.woff"], "fallthrough": true },
+    { "type": "CompiledWasm", "globs": ["**/*.wasm"], "fallthrough": true }
+  ],
+  "routes": [
+    { "pattern": "hypertrader.info/api/og/*", "zone_name": "hypertrader.info" },
+    { "pattern": "hypertrader.info/u/*", "zone_name": "hypertrader.info" },
+    { "pattern": "hypertrader.info/share/*", "zone_name": "hypertrader.info" }
+  ],
+  "observability": { "enabled": true }
+}

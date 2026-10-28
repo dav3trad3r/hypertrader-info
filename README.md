@@ -117,3 +117,6 @@ address has activity there:
 - `workers/scanner-block`: a Cloudflare Worker routed on the same probe paths so they are
   answered at the edge and never reach the origin.
 - `workers/papertrade-proxy`: see Venue filters above.
+- `workers/og`: per-trader link previews. `/api/og/<address>.png` renders the trader's card from
+  `src/lib/snapshot.ts` (the same calculation as the page), and `/u/<address>` and `/share/<address>`
+  pages get preview tags pointing at it. Deploy with `cd workers/og && npm install && npx wrangler deploy`.

@@ -1,0 +1,9 @@
+{
+  "name": "hypertrader-og",
+  "private": true,
+  "description": "Per-trader link previews for hypertrader.info: /api/og/<address>.png and the meta tags on /u/ and /share/ pages",
+  "dependencies": {
+    "@fontsource/inter": "5.3.0",
+    "workers-og": "0.0.27"
+  }
+}
