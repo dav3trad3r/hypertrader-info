@@ -1,11 +1,23 @@
-import { createPublicClient, http, isAddress } from 'viem';
+import { createPublicClient, fallback, http, isAddress } from 'viem';
 import { mainnet } from 'viem/chains';
 import { normalize } from 'viem/ens';
 
-// Create a public client for ENS resolution (uses Ethereum mainnet)
+// Ethereum mainnet for ENS. viem's default endpoint for mainnet (eth.merkle.io)
+// refuses browser requests (no CORS headers), so every lookup failed and ENS
+// names never resolved (checked 2026-10-29: "vitalik.eth" -> "Unable to Load
+// Data"). These public endpoints answer browser requests; viem tries them in
+// order and moves on when one fails. ENS reverse lookups go through the
+// Universal Resolver with CCIP-read, which viem handles over the same transport.
+export const ENS_RPCS = [
+  'https://ethereum-rpc.publicnode.com',
+  'https://eth.drpc.org',
+  'https://1rpc.io/eth',
+  'https://cloudflare-eth.com',
+];
+
 const publicClient = createPublicClient({
   chain: mainnet,
-  transport: http(),
+  transport: fallback(ENS_RPCS.map(url => http(url, { timeout: 8_000, retryCount: 0 }))),
 });
 
 // Cache for ENS lookups to avoid repeated RPC calls
@@ -25,25 +37,18 @@ export function isENSName(value: string): boolean {
  */
 export async function resolveENSName(name: string): Promise<string | null> {
   const normalizedName = name.toLowerCase().trim();
-  
-  // Check cache first
+
   if (addressCache.has(normalizedName)) {
     return addressCache.get(normalizedName) ?? null;
   }
-  
+
   try {
-    const normalizedENS = normalize(normalizedName);
-    const address = await publicClient.getEnsAddress({
-      name: normalizedENS,
-    });
-    
-    // Cache the result
+    const address = await publicClient.getEnsAddress({ name: normalize(normalizedName) });
     addressCache.set(normalizedName, address);
-    
     return address;
   } catch (error) {
-    console.error('ENS resolution failed:', error);
-    addressCache.set(normalizedName, null);
+    console.warn('ENS resolution failed:', error);
+    // Not cached: a network blip should not stick for the whole session
     return null;
   }
 }
@@ -54,24 +59,17 @@ export async function resolveENSName(name: string): Promise<string | null> {
  */
 export async function resolveAddressToENS(address: string): Promise<string | null> {
   const normalizedAddress = address.toLowerCase();
-  
-  // Check cache first
+
   if (ensCache.has(normalizedAddress)) {
     return ensCache.get(normalizedAddress) ?? null;
   }
-  
+
   try {
-    const ensName = await publicClient.getEnsName({
-      address: address as `0x${string}`,
-    });
-    
-    // Cache the result
+    const ensName = await publicClient.getEnsName({ address: address as `0x${string}` });
     ensCache.set(normalizedAddress, ensName);
-    
     return ensName;
   } catch (error) {
-    console.error('ENS reverse lookup failed:', error);
-    ensCache.set(normalizedAddress, null);
+    console.warn('ENS reverse lookup failed:', error);
     return null;
   }
 }
@@ -85,24 +83,16 @@ export async function resolveInput(input: string): Promise<{
   ensName: string | null;
 }> {
   const trimmed = input.trim();
-  
-  // If it's an ENS name, resolve to address
+
   if (isENSName(trimmed)) {
     const address = await resolveENSName(trimmed);
-    return {
-      address,
-      ensName: address ? trimmed : null,
-    };
+    return { address, ensName: address ? trimmed : null };
   }
-  
-  // If it's a valid address, try reverse lookup for ENS name
+
   if (isAddress(trimmed)) {
     const ensName = await resolveAddressToENS(trimmed);
-    return {
-      address: trimmed,
-      ensName,
-    };
+    return { address: trimmed, ensName };
   }
-  
+
   return { address: null, ensName: null };
 }
