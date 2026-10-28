@@ -68,7 +68,6 @@ const Index = () => {
     rawFills,
     isLoading,
     isLoadingMonth,
-    isSyncing,
     isRefreshing,
     lastRefreshed,
     trackingInfo,
@@ -184,8 +183,8 @@ const Index = () => {
                     Historical Gap Detected
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Some historical trades may be missing. Keep visiting to accumulate more history over time.
-                    We've stored {trackingInfo.total_fills?.toLocaleString() || 0} fills so far.
+                    The stored archive for this address has a gap, so some older trades are missing.
+                    It holds {trackingInfo.total_fills?.toLocaleString() || 0} fills.
                   </p>
                 </div>
               </div>
@@ -212,8 +211,8 @@ const Index = () => {
                     API Limit Reached
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Hyperliquid's API only provides access to the most recent ~10,000 trades. 
-                    Your data is being synced to our database for unlimited historical access on future visits.
+                    Hyperliquid's API only returns an account's most recent ~10,000 fills, so older trades
+                    are not included in these figures.
                   </p>
                 </div>
               </div>
@@ -261,14 +260,6 @@ const Index = () => {
                       )}
                       {isLoadingMonth && <span className="text-primary animate-pulse ml-2">• Loading more...</span>}
                     </p>
-                    {isSyncing && (
-                      <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                        <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                        </svg>
-                        Syncing...
-                      </span>
-                    )}
                     {/* Auto-refresh indicator */}
                     <RefreshIndicator isRefreshing={isRefreshing} lastRefreshed={lastRefreshed} />
                   </div>

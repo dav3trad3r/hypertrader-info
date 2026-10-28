@@ -43,7 +43,6 @@ export interface UseHyperliquidDataReturn {
   rawFills: Fill[];
   isLoading: boolean;
   isLoadingMonth: boolean;
-  isSyncing: boolean;
   isRefreshing: boolean;
   lastRefreshed: Date | null;
   trackingInfo: TrackingInfo | null;
@@ -72,7 +71,6 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
   const [rawFills, setRawFills] = useState<Fill[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingMonth, setIsLoadingMonth] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const [trackingInfo, setTrackingInfo] = useState<TrackingInfo | null>(null);
@@ -309,30 +307,6 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
         }
       }
 
-      // Trigger sync to Supabase (runs in background)
-      setIsSyncing(true);
-      const syncPromise = fetch(`${SUPABASE_URL}/functions/v1/sync-fills`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
-        },
-        body: JSON.stringify({ address: target })
-      }).then(async (res) => {
-        if (res.ok) {
-          const syncResult = await res.json();
-          console.log('Sync result:', syncResult);
-          return syncResult;
-        }
-        console.warn('Sync failed, continuing with API data');
-        return null;
-      }).catch(err => {
-        console.warn('Sync error:', err);
-        return null;
-      }).finally(() => {
-        setIsSyncing(false);
-      });
-
       if (portfolio?.accountValue != null) {
         setAccountValue(portfolio.accountValue);
       }
@@ -387,8 +361,10 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
         });
         setLoadedMonths(monthsWithData);
         
-        // Wait for sync to complete, then check for additional historical data
-        syncPromise.then(async () => {
+        // Older trades from the stored archive (fills the old Lovable backend saved
+        // before 2026-10; nothing new is written there since its sync function went
+        // away), merged under the API's newest 10,000.
+        (async () => {
           try {
             const dbRes = await fetch(
               `${SUPABASE_URL}/functions/v1/get-fills?address=${target}`,
@@ -425,7 +401,7 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
                     
                     toast({
                       title: "Historical data merged",
-                      description: `Found ${historicalFills.length.toLocaleString()} additional trades from previous syncs.`,
+                      description: `Found ${historicalFills.length.toLocaleString()} older trades in the stored archive.`,
                       duration: 3000,
                     });
                   }
@@ -435,13 +411,13 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
           } catch (err) {
             console.warn('Failed to fetch historical data:', err);
           }
-        });
+        })();
         
         // Show appropriate toast
         if (apiResult.hitApiLimit) {
           toast({
             title: "API limit reached",
-            description: `Loaded ${apiResult.totalFetched.toLocaleString()} trades. Historical data syncing in background.`,
+            description: `Loaded the newest ${apiResult.totalFetched.toLocaleString()} trades, the most Hyperliquid's API returns.`,
             variant: "default",
             duration: 5000,
           });
@@ -480,7 +456,6 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
     attemptedMonths.current = new Set();
     setHasMoreHistory(false);
     setHitApiLimit(false);
-    setIsSyncing(false);
     setIsRefreshing(false);
     setLastRefreshed(null);
     setTrackingInfo(null);
@@ -583,7 +558,6 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
     rawFills,
     isLoading,
     isLoadingMonth,
-    isSyncing,
     isRefreshing,
     lastRefreshed,
     trackingInfo,
