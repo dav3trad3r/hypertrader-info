@@ -158,8 +158,10 @@ export async function fetchPapertradeTrades(
   const out: PapertradeTrade[] = [];
   let cursor: string | null = null;
   for (let page = 0; page < MAX_PAGES; page++) {
-    const q = new URLSearchParams({ limit: String(PAGE) });
-    if (cursor) q.set('cursor', cursor);
+    // The API only accepts each route's canonical URL: the first page takes
+    // `limit`, later pages take `cursor` alone (adding limit is a 400, which
+    // broke every trader with more than one page, found 2026-10-29).
+    const q = cursor ? new URLSearchParams({ cursor }) : new URLSearchParams({ limit: String(PAGE) });
     const res: { items: PapertradeTrade[]; nextCursor: string | null } = await getJson(
       `/query/accounts/${a}/trades?${q}`,
       signal,

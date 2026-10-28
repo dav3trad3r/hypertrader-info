@@ -135,7 +135,9 @@ describe('fetchPapertradeTrades', () => {
     const fetcher = vi.fn(async (url: string) => {
       const u = new URL(url);
       expect(u.pathname).toMatch(/\/query\/accounts\/0xabc\/trades$/);
-      expect(u.searchParams.get('limit')).toBe('75');
+      // canonical URLs: limit on the first page, cursor alone after that
+      if (u.searchParams.get('cursor')) expect(u.searchParams.get('limit')).toBeNull();
+      else expect(u.searchParams.get('limit')).toBe('75');
       const body = pages[u.searchParams.get('cursor') ?? ''];
       return new Response(JSON.stringify(body), { status: 200 });
     });
