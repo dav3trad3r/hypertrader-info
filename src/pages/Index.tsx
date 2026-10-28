@@ -92,7 +92,7 @@ const Index = () => {
   // Under the bskts filter, positions regroup by basket (fills are already bskts-only there)
   const baskets = useBasketPositions(marketType === 'bskts' ? (filteredData?.fills ?? NO_FILLS) : NO_FILLS);
   // papertrade.xyz: off-exchange synthetic perps for the same address, fetched separately
-  const papertrade = usePapertrade(address);
+  const papertrade = usePapertrade(address, { live: marketType === 'papertrade' });
   const hasPapertrade = papertrade.trades.length > 0;
   const hasData = rawFills.length > 0 || hasPapertrade;
   // A Papertrade-only address has no Hyperliquid fills; that is not an error.

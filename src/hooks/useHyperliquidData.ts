@@ -11,6 +11,7 @@ fetchUserFunding,
 } from '@/lib/hyperliquid';
 import { isBsktsFill } from '@/lib/bskts';
 import { buildTradingView } from '@/lib/view';
+import { isPageHidden, onPageVisible } from '@/lib/visibility';
 import {
   getSpotTokenCache,
   type UserTradingData,
@@ -537,12 +538,14 @@ export function useHyperliquidData(): UseHyperliquidDataReturn {
         lastFillTimeRef.current = Math.max(...rawFills.map(f => f.time));
       }
       
-      // Start polling every 30 seconds
+      // Poll every 30 seconds while the tab is visible; catch up when it is shown again
       pollIntervalRef.current = setInterval(() => {
-        refreshNow();
+        if (!isPageHidden()) refreshNow();
       }, 30000);
-      
+      const offVisible = onPageVisible(() => refreshNow());
+
       return () => {
+        offVisible();
         if (pollIntervalRef.current) {
           clearInterval(pollIntervalRef.current);
           pollIntervalRef.current = null;

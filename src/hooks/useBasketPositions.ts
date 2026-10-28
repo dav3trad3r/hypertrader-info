@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Fill } from '@/lib/hyperliquid';
 import { fetchMarks, isBasketOpen, reduceBsktsFills, type BasketPosition } from '@/lib/bskts';
+import { isPageHidden, onPageVisible } from '@/lib/visibility';
 
 // Live marks refresh on the same cadence as Live Positions.
 const MARKS_INTERVAL = 10000;
@@ -39,10 +40,12 @@ export function useBasketPositions(fills: Fill[]) {
       }
     };
     load();
-    const id = setInterval(load, MARKS_INTERVAL);
+    const id = setInterval(() => { if (!isPageHidden()) load(); }, MARKS_INTERVAL);
+    const offVisible = onPageVisible(load);
     return () => {
       controller.abort();
       clearInterval(id);
+      offVisible();
     };
   }, [coinsKey]);
 

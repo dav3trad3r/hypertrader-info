@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Gauge, Info } from 'lucide-react';
+import { isPageHidden } from '@/lib/visibility';
 import { fetchOpenExposure, marketLabel as marketLabelFor, type MarketType, type OpenExposure, type TradingSummary } from '@/lib/hyperliquid';
 import { computeEquityStats, MIN_SHARPE_DAYS, type EquityPoint, type TradeStats } from '@/lib/pnl';
 import { cn, formatCurrency } from '@/lib/utils';
@@ -96,7 +97,7 @@ export function TraderScorecard({ tradeStats, summary, equity, address, marketTy
       if (!cancelled && result) setExposure(result);
     });
     load();
-    const interval = setInterval(load, EXPOSURE_REFRESH_MS);
+    const interval = setInterval(() => { if (!isPageHidden()) load(); }, EXPOSURE_REFRESH_MS);
     return () => {
       cancelled = true;
       clearInterval(interval);
