@@ -5,6 +5,7 @@ import {
   decodeDepositLog,
   decodeHandlerMessage,
   resolveBsktsPerpsAccount,
+  verifyBsktsPerpsLink,
 } from './bsktsAccount';
 
 // The owner's real transfers from bskts account …8e47 (Robinhood Chain).
@@ -112,5 +113,39 @@ describe('resolveBsktsPerpsAccount retries', () => {
     });
     expect(await resolveBsktsPerpsAccount(PERPS, undefined, fetcher as unknown as typeof fetch)).toBeNull();
     expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('verifyBsktsPerpsLink', () => {
+  const SPOKE = '0xd29c85f15df544ba632c9e25829fd29d767d7978';
+  const topics = (depositor: string) => [
+    FUNDS_DEPOSITED_TOPIC,
+    '0x' + (999).toString(16).padStart(64, '0'),
+    '0x' + '0'.repeat(63) + '1',
+    '0x' + depositor.slice(2).padStart(64, '0'),
+  ];
+  const receiptFetcher = (logs: unknown[], status = '0x1') =>
+    vi.fn(async () => new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { status, logs } })));
+  const TX = '0x' + 'ab'.repeat(32);
+
+  it('reads the perps wallet from the transfer receipt', async () => {
+    const f = receiptFetcher([{ address: SPOKE, topics: topics(ACCOUNT), data: depositData(HYPERCORE_HANDLER, MSG_LATER) }]);
+    expect(await verifyBsktsPerpsLink(ACCOUNT, TX, undefined, f as unknown as typeof fetch)).toEqual({
+      account: ACCOUNT,
+      perpsAccount: PERPS,
+      txHash: TX,
+    });
+    expect(f).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a transfer from a different account, to a different recipient, or a failed tx', async () => {
+    const other = '0x1111111111111111111111111111111111111111';
+    const wrongFrom = receiptFetcher([{ address: SPOKE, topics: topics(other), data: depositData(HYPERCORE_HANDLER, MSG_LATER) }]);
+    expect(await verifyBsktsPerpsLink(ACCOUNT, TX, undefined, wrongFrom as unknown as typeof fetch)).toBeNull();
+    const wrongTo = receiptFetcher([{ address: SPOKE, topics: topics(ACCOUNT), data: depositData(other, MSG_LATER) }]);
+    expect(await verifyBsktsPerpsLink(ACCOUNT, TX, undefined, wrongTo as unknown as typeof fetch)).toBeNull();
+    const failed = receiptFetcher([{ address: SPOKE, topics: topics(ACCOUNT), data: depositData(HYPERCORE_HANDLER, MSG_LATER) }], '0x0');
+    expect(await verifyBsktsPerpsLink(ACCOUNT, TX, undefined, failed as unknown as typeof fetch)).toBeNull();
+    expect(await verifyBsktsPerpsLink(ACCOUNT, 'not-a-hash')).toBeNull();
   });
 });

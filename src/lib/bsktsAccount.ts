@@ -68,8 +68,10 @@ type Fetcher = (url: string, init?: RequestInit) => Promise<Response>;
 /** One JSON-RPC call to Robinhood Chain, retried. The public RPC intermittently
  *  answers with a doubled `Access-Control-Allow-Origin: *,*` header (seen
  *  2026-10-29, about one call in five), which the browser rejects as a network
- *  error; a retry usually lands on a good response. */
-async function rpc<T>(method: string, params: unknown[], fetcher: Fetcher, signal?: AbortSignal, attempts = 3): Promise<T> {
+ *  error; a retry usually lands on a good response. It also rate-limits by IP
+ *  (HTTP 429), which bites from Cloudflare Workers' shared addresses, so a 429
+ *  waits longer before the retry. */
+async function rpc<T>(method: string, params: unknown[], fetcher: Fetcher, signal?: AbortSignal, attempts = 4): Promise<T> {
   let lastErr: unknown;
   for (let i = 0; i < attempts; i++) {
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
@@ -80,14 +82,15 @@ async function rpc<T>(method: string, params: unknown[], fetcher: Fetcher, signa
         body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
         signal,
       });
-      if (!res.ok) throw new Error(`Robinhood Chain ${method}: HTTP ${res.status}`);
+      if (!res.ok) throw Object.assign(new Error(`Robinhood Chain ${method}: HTTP ${res.status}`), { status: res.status });
       const j = (await res.json()) as { result?: T; error?: { message: string } };
       if (j.error) throw new Error(`Robinhood Chain ${method}: ${j.error.message}`);
       return j.result as T;
     } catch (err) {
       if (signal?.aborted) throw err;
       lastErr = err;
-      if (i < attempts - 1) await new Promise(r => setTimeout(r, 300 * (i + 1)));
+      const limited = (err as { status?: number }).status === 429;
+      if (i < attempts - 1) await new Promise(r => setTimeout(r, limited ? 1000 * 2 ** i : 300 * (i + 1)));
     }
   }
   throw lastErr;
@@ -137,6 +140,40 @@ export async function resolveBsktsPerpsAccount(
       const perps = decodeHandlerMessage(dep.message);
       if (perps) return { account: a, perpsAccount: perps, txHash: log.transactionHash };
     }
+  }
+  return null;
+}
+
+interface RpcReceipt {
+  status?: string;
+  logs: Array<Pick<RpcLog, 'data' | 'topics'> & { address: string }>;
+}
+
+/** Check a claimed link from the transfer that made it: the receipt must hold a
+ *  FundsDeposited on the Robinhood Chain SpokePool, from `account`, to
+ *  HyperEVM's HyperCore handler. One eth_getTransactionReceipt, where a scan
+ *  needs eth_getLogs, which the public RPC refuses from Cloudflare Workers'
+ *  shared IPs (2026-10-29: every getLogs 429, receipts fine). Share links for a
+ *  bskts account carry this tx (?via=) so the link-preview Worker can verify it;
+ *  a forged pairing fails here. */
+export async function verifyBsktsPerpsLink(
+  account: string,
+  txHash: string,
+  signal?: AbortSignal,
+  fetcher: Fetcher = fetch,
+): Promise<BsktsPerpsLink | null> {
+  const a = account.toLowerCase();
+  if (!/^0x[0-9a-f]{40}$/.test(a) || !/^0x[0-9a-fA-F]{64}$/.test(txHash)) return null;
+  const receipt = await rpc<RpcReceipt | null>('eth_getTransactionReceipt', [txHash], fetcher, signal);
+  if (!receipt || receipt.status === '0x0') return null;
+  for (const log of receipt.logs) {
+    if (log.address.toLowerCase() !== RH_SPOKE_POOL) continue;
+    const [t0, t1, , t3] = log.topics.map(t => t.toLowerCase());
+    if (t0 !== FUNDS_DEPOSITED_TOPIC || t1 !== word(HYPEREVM_CHAIN_ID.toString(16)) || t3 !== word(a)) continue;
+    const dep = decodeDepositLog(log);
+    if (!dep || dep.recipient !== HYPERCORE_HANDLER) continue;
+    const perps = decodeHandlerMessage(dep.message);
+    if (perps) return { account: a, perpsAccount: perps, txHash };
   }
   return null;
 }

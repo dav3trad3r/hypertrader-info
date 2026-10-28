@@ -12,9 +12,12 @@ import {
 interface ShareProfileButtonProps {
   address: string;
   marketType?: MarketType;
+  /** For a bskts account: the transfer that links it to its perps wallet, so the
+   *  link-preview Worker can verify the pairing with one receipt lookup. */
+  bsktsLinkTx?: string;
 }
 
-export function ShareProfileButton({ address, marketType = 'all' }: ShareProfileButtonProps) {
+export function ShareProfileButton({ address, marketType = 'all', bsktsLinkTx }: ShareProfileButtonProps) {
   const [copied, setCopied] = useState(false);
 
   const handleShare = async () => {
@@ -22,6 +25,7 @@ export function ShareProfileButton({ address, marketType = 'all' }: ShareProfile
     // (workers/og renders it); ?market= opens the same filter for the reader.
     const url = new URL(`/u/${address}`, window.location.origin);
     if (marketType !== 'all') url.searchParams.set('market', marketType);
+    if (bsktsLinkTx) url.searchParams.set('via', bsktsLinkTx);
     
     try {
       await navigator.clipboard.writeText(url.toString());

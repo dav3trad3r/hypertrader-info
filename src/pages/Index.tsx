@@ -297,7 +297,7 @@ const Index = () => {
                     onChange={setMarketType}
                     counts={{ ...marketCounts, papertrade: papertrade.trades.length }}
                   />
-                  <ShareProfileButton address={shownAddress || ''} marketType={marketType} />
+                  <ShareProfileButton address={shownAddress || ''} marketType={marketType} bsktsLinkTx={bsktsLink?.txHash} />
                   {displayData && (
                     <SharePnLCard 
                       summary={displayData.summary}

@@ -20,12 +20,13 @@ import interRegular from '@fontsource/inter/files/inter-latin-400-normal.woff';
 import interSemibold from '@fontsource/inter/files/inter-latin-600-normal.woff';
 import interBold from '@fontsource/inter/files/inter-latin-700-normal.woff';
 import { loadTradingSnapshot, parseMarket, shareStats, shortAddress, type TradingSnapshot } from '../../../src/lib/snapshot';
-import { resolveBsktsPerpsAccount } from '../../../src/lib/bsktsAccount';
+import { resolveBsktsPerpsAccount, verifyBsktsPerpsLink } from '../../../src/lib/bsktsAccount';
 import { marketLabel, type MarketType } from '../../../src/lib/hyperliquid';
 import { formatCurrency } from '../../../src/lib/utils';
 
 const SITE = 'https://hypertrader.info';
 const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
+const TX_RE = /^0x[0-9a-fA-F]{64}$/;
 /** Previews are cached this long, and the image URL changes once per window. */
 const TTL_SECONDS = 600;
 
@@ -171,14 +172,44 @@ function card(opts: {
 const papertradeFetch = (url: string, init?: RequestInit) =>
   fetch(url.replace(`${SITE}/api/papertrade`, 'https://exchange.papertrade.xyz'), init);
 
-async function loadFor(address: string, market: MarketType) {
+/** A bskts account's perps wallet never changes once linked, so a found link is
+ *  kept for a day (and a miss for 10 min). Saves the log scan, which the public
+ *  Robinhood Chain RPC rate-limits from Workers' shared IPs. */
+async function cachedBsktsLink(address: string, via: string | null): Promise<{ perpsAccount: string } | null> {
+  const cache = (caches as unknown as { default: Cache }).default;
+  const key = new Request(`${SITE}/__cache/bskts-link/${address}`);
+  const hit = await cache.match(key);
+  if (hit) {
+    const cached = (await hit.json()) as { perpsAccount: string } | null;
+    if (cached || !via) return cached;
+  }
+  let link: { perpsAccount: string } | null = null;
+  let ok = true;
+  try {
+    // Share links carry the linking transfer (?via=): one receipt read, verified
+    // on-chain. Without it, scan the logs (often refused from Workers' IPs).
+    const r = (via ? await verifyBsktsPerpsLink(address, via) : null) ?? (await resolveBsktsPerpsAccount(address));
+    link = r ? { perpsAccount: r.perpsAccount } : null;
+  } catch (err) {
+    ok = false;
+    console.warn('bskts account lookup failed', address, String(err));
+  }
+  if (ok) {
+    await cache.put(key, new Response(JSON.stringify(link), {
+      headers: { 'content-type': 'application/json', 'cache-control': `public, max-age=${link ? 86400 : 600}` },
+    }));
+  }
+  return link;
+}
+
+async function loadFor(address: string, market: MarketType, via: string | null) {
   let snapshot = await loadTradingSnapshot(address, market, { papertradeFetch });
   let shownAddress = address;
   let linkedFrom: string | undefined;
   // A bskts account has no Hyperliquid history of its own: follow its transfers
   // to the perps wallet, as the page does (lib/bsktsAccount.ts).
   if (!snapshot.view && market !== 'papertrade') {
-    const link = await resolveBsktsPerpsAccount(address).catch(() => null);
+    const link = await cachedBsktsLink(address, via);
     if (link) {
       linkedFrom = address;
       shownAddress = link.perpsAccount;
@@ -202,27 +233,32 @@ async function imageResponse(url: URL, ctx: Ctx): Promise<Response> {
   if (!m) return new Response('Not found', { status: 404 });
   const address = m[1].toLowerCase();
   const requested = parseMarket(url.searchParams.get('market'));
+  const via = TX_RE.test(url.searchParams.get('via') ?? '') ? url.searchParams.get('via')! : null;
 
   const cache = (caches as unknown as { default: Cache }).default;
-  const key = new Request(`${SITE}/api/og/${address}.png?market=${requested}&v=${url.searchParams.get('v') ?? ''}`);
+  const key = new Request(`${SITE}/api/og/${address}.png?market=${requested}&via=${via ?? ''}&v=${url.searchParams.get('v') ?? ''}`);
   const hit = await cache.match(key);
   if (hit) return hit;
 
   let node: Node;
+  let hasData = false;
   try {
-    const { snapshot, shownAddress, linkedFrom, market } = await loadFor(address, requested);
+    const { snapshot, shownAddress, linkedFrom, market } = await loadFor(address, requested, via);
+    hasData = !!snapshot.view;
     node = card({ address: shownAddress, market, snapshot, linkedFrom });
   } catch (err) {
     console.error('og snapshot failed', address, err);
     node = card({ address, market: requested, snapshot: null });
   }
+  // An empty card may be a transient upstream failure: keep it only briefly
+  const ttl = hasData ? TTL_SECONDS : 60;
 
   const img = new ImageResponse(node as unknown as string, { width: 1200, height: 630, fonts: await fonts() });
   const res = new Response(img.body, {
     status: 200,
     headers: {
       'content-type': 'image/png',
-      'cache-control': `public, max-age=${TTL_SECONDS}`,
+      'cache-control': `public, max-age=${ttl}`,
       'access-control-allow-origin': '*',
     },
   });
@@ -244,10 +280,14 @@ async function pageWithPreview(request: Request, url: URL): Promise<Response> {
 
   const address = m[1];
   const market = parseMarket(url.searchParams.get('market'));
+  const via = TX_RE.test(url.searchParams.get('via') ?? '') ? url.searchParams.get('via')! : null;
   const short = shortAddress(address);
   const bucket = Math.floor(Date.now() / (TTL_SECONDS * 1000));
-  const image = `${SITE}/api/og/${address.toLowerCase()}.png?market=${market}&v=${bucket}`;
-  const pageUrl = `${SITE}${url.pathname}${market !== 'all' ? `?market=${market}` : ''}`;
+  const image = `${SITE}/api/og/${address.toLowerCase()}.png?market=${market}${via ? `&via=${via}` : ''}&v=${bucket}`;
+  const q = new URLSearchParams();
+  if (market !== 'all') q.set('market', market);
+  if (via) q.set('via', via);
+  const pageUrl = `${SITE}${url.pathname}${q.toString() ? `?${q}` : ''}`;
   const title = `${short} · Hyperliquid PnL | HyperTrader`;
   const desc = `PnL calendar, win rate and trader scorecard for ${short}${market !== 'all' ? ` (${marketLabel(market, 'all markets')})` : ''} on HyperTrader. Read-only public data.`;
 
