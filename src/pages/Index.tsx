@@ -221,7 +221,7 @@ const Index = () => {
             {/* Address Banner with Filter */}
             <div className="bg-card border border-border rounded-lg p-4">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                <div>
+                <div className="min-w-0 w-full sm:w-auto">
                   {bsktsLink && (
                     <div className="flex items-center gap-1.5 mb-1.5 text-xs text-muted-foreground flex-wrap">
                       <img src={bsktsMark} alt="" width={14} height={14} className="w-3.5 h-3.5 rounded-[3px]" />
@@ -240,13 +240,13 @@ const Index = () => {
                     </div>
                   )}
                   <p className="text-xs text-muted-foreground">Viewing trading history for</p>
-                  <div className="flex items-center gap-2 mt-0.5">
+                  <div className="flex items-center gap-2 mt-0.5 min-w-0">
                     {ensName && (
                       <span className="font-semibold text-base text-foreground">
                         {ensName}
                       </span>
                     )}
-                    <p className={`font-mono text-sm truncate max-w-md ${ensName ? 'text-muted-foreground' : 'text-foreground'}`}>
+                    <p className={`font-mono text-sm truncate min-w-0 max-w-full sm:max-w-md ${ensName ? 'text-muted-foreground' : 'text-foreground'}`}>
                       {ensName ? `(${address?.slice(0, 6)}...${address?.slice(-4)})` : address}
                     </p>
                   </div>
@@ -265,7 +265,8 @@ const Index = () => {
                   </div>
                 </div>
                 
-                <div className="flex items-center gap-2">
+                {/* On phones the filter takes its own row and the share buttons wrap under it */}
+                <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
                   <MarketFilter 
                     value={marketType}
                     onChange={setMarketType}

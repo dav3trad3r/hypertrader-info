@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { type DailyPnL, type WeeklyPnL, type Fill, formatLocalDateKey, parseLocalDateKey, PNL_EPSILON } from '@/lib/hyperliquid';
 import type { CostAttribution } from '@/lib/pnl';
 import { DayTradeBreakdown } from '@/components/DayTradeBreakdown';
-import { cn, formatCurrency } from '@/lib/utils';
+import { cn, formatCompactUsd, formatCurrency } from '@/lib/utils';
 
 interface PnLCalendarProps {
   dailyPnL: DailyPnL[];
@@ -281,7 +281,9 @@ export function PnLCalendar({
                           "text-[8px] sm:text-xs font-mono font-semibold block leading-none",
                           pnlColor
                         )}>
-                          {pnlText}
+                          {/* Phones: the cell is ~40px wide, so whole dollars / K */}
+                          <span className="sm:hidden">{formatCompactUsd(day.pnl)}</span>
+                          <span className="hidden sm:inline">{pnlText}</span>
                         </span>
                       )}
                       <span className="text-[7px] sm:text-[10px] text-muted-foreground hidden sm:inline">
@@ -368,8 +370,14 @@ export function PnLCalendar({
                 getWeekTotal(weekIndex) > 0 ? "text-profit" : 
                 getWeekTotal(weekIndex) < 0 ? "text-loss" : "text-muted-foreground"
               )}>
-                {getWeekTotal(weekIndex) !== 0 && (getWeekTotal(weekIndex) > 0 ? '+' : '')}
-                {getWeekTotal(weekIndex) !== 0 ? formatCurrency(getWeekTotal(weekIndex)) : '—'}
+                {getWeekTotal(weekIndex) === 0 ? '—' : (
+                  <>
+                    <span className="sm:hidden">{formatCompactUsd(getWeekTotal(weekIndex))}</span>
+                    <span className="hidden sm:inline">
+                      {getWeekTotal(weekIndex) > 0 ? '+' : ''}{formatCurrency(getWeekTotal(weekIndex))}
+                    </span>
+                  </>
+                )}
               </span>
             </div>
           </>

@@ -31,14 +31,14 @@ const FILTERS: { value: MarketType; label: string; title?: string; icon?: string
 export function MarketFilter({ value, onChange, counts }: MarketFilterProps) {
   const filters = FILTERS.filter(f => !OPTIONAL.has(f.value) || counts[f.value as 'bskts' | 'papertrade'] > 0);
   return (
-    <div className="inline-flex items-center gap-1 p-1 bg-secondary rounded-lg">
+    <div className="inline-flex max-w-full flex-wrap items-center gap-1 p-1 bg-secondary rounded-lg">
       {filters.map((filter) => (
         <button
           key={filter.value}
           onClick={() => onChange(filter.value)}
           title={filter.title}
           className={cn(
-            "inline-flex items-center px-4 py-2 text-sm font-medium rounded-md transition-all duration-200",
+            "inline-flex shrink-0 items-center whitespace-nowrap px-3 sm:px-4 py-2 text-sm font-medium rounded-md transition-all duration-200",
             value === filter.value
               ? "bg-primary text-primary-foreground shadow-sm"
               : "text-muted-foreground hover:text-foreground hover:bg-muted"

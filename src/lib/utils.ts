@@ -58,3 +58,18 @@ export function formatSize(value: number): string {
   }
   return value.toFixed(4);
 }
+
+/**
+ * Short currency for tight spaces (calendar cells on phones): no cents above $10,
+ * K/M above a thousand. "+$190", "-$1.3K", "+$4.2".
+ */
+export function formatCompactUsd(value: number, includeSign = true): string {
+  const abs = Math.abs(value);
+  const sign = value < 0 && abs >= 0.05 ? '-' : includeSign && value > 0 ? '+' : '';
+  let body: string;
+  if (abs >= 1_000_000) body = `${(abs / 1_000_000).toFixed(abs >= 10_000_000 ? 0 : 1)}M`;
+  else if (abs >= 1_000) body = `${(abs / 1_000).toFixed(abs >= 10_000 ? 0 : 1)}K`;
+  else if (abs >= 10) body = Math.round(abs).toString();
+  else body = abs.toFixed(1);
+  return `${sign}$${body}`;
+}

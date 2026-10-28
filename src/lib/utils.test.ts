@@ -19,3 +19,16 @@ describe('formatCurrency', () => {
     expect(formatCurrency(0)).toBe('$0.00');
   });
 });
+
+import { formatCompactUsd } from './utils';
+describe('formatCompactUsd', () => {
+  it('keeps calendar cells short', () => {
+    expect(formatCompactUsd(190.05)).toBe('+$190');
+    expect(formatCompactUsd(-1336.4)).toBe('-$1.3K');
+    expect(formatCompactUsd(4.17)).toBe('+$4.2');
+    expect(formatCompactUsd(-25_400)).toBe('-$25K');
+    expect(formatCompactUsd(2_500_000)).toBe('+$2.5M');
+    expect(formatCompactUsd(0.01)).toBe('+$0.0');
+    expect(formatCompactUsd(-0.01)).toBe('$0.0');
+  });
+});
